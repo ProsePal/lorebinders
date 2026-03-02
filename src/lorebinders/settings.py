@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     analysis_model: str = "openrouter:deepseek/deepseek-v3.2"
     summarization_model: str = "openrouter:bytedance/seed-1.6-flash"
 
+    extraction_fallback_model: str | None = None
+    analysis_fallback_model: str | None = None
+    summarization_fallback_model: str | None = None
+
     workspace_base_path: Path = Path(__file__).parent / "work"
     db_url: str = "sqlite:///:memory:"
 

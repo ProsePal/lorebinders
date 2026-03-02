@@ -4,6 +4,9 @@ from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.agent import RunOutputDataT
+from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.models import Model
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
 
@@ -42,26 +45,42 @@ def load_prompt_from_assets(filename: str) -> str:
 logger = logging.getLogger(__name__)
 
 
+def _is_moderation_error(exc: Exception) -> bool:
+    return isinstance(exc, ModelHTTPError) and exc.status_code == 403
+
+
 def create_agent(
-    model_name: str,
+    model_name: Model | str,
     deps_type: type[AgentDepsT],
     output_type: type[RunOutputDataT],
     model_settings: ModelSettings | None = None,
+    fallback_model: Model | str | None = None,
 ) -> Agent[AgentDepsT, RunOutputDataT]:
     """Create a PydanticAI Agent with the given model.
 
     Args:
-        model_name: The name of the model to use.
+        model_name: The model instance or name string to use.
         deps_type: The type of dependencies to inject.
         output_type: The type of the expected output.
         model_settings: Optional settings for the model.
+        fallback_model: Optional fallback model instance or name string
+            used when the primary model returns HTTP 403 (content
+            moderation).
 
     Returns:
         A configured PydanticAI Agent.
     """
     logger.debug(f"Creating agent for model: {model_name}")
+    if fallback_model:
+        model: Model | str | FallbackModel = FallbackModel(
+            model_name,
+            fallback_model,
+            fallback_on=(_is_moderation_error,),
+        )
+    else:
+        model = model_name
     return Agent(
-        model_name,
+        model,
         deps_type=deps_type,
         output_type=output_type,
         model_settings=model_settings,
@@ -119,6 +138,7 @@ def create_extraction_agent(
         deps_type=AgentDeps,
         output_type=ExtractionResult,
         model_settings=settings.extractor_model_settings,
+        fallback_model=settings.extraction_fallback_model,
     )
 
     @agent.system_prompt
@@ -180,6 +200,7 @@ def create_analysis_agent(
         settings.analysis_model,
         deps_type=AgentDeps,
         output_type=list[AnalysisResult],
+        fallback_model=settings.analysis_fallback_model,
     )
 
     @agent.system_prompt
@@ -232,6 +253,7 @@ def create_summarization_agent(
         settings.summarization_model,
         deps_type=AgentDeps,
         output_type=SummarizerResult,
+        fallback_model=settings.summarization_fallback_model,
     )
 
     @agent.system_prompt

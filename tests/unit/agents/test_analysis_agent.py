@@ -1,3 +1,5 @@
+from pydantic_ai.models.fallback import FallbackModel
+
 from lorebinders.agent import (
     build_analysis_user_prompt,
     create_analysis_agent,
@@ -81,3 +83,14 @@ def test_analysis_agent_run_sync_and_prompt() -> None:
                     found_user_text = True
 
     assert found_user_text, "Dynamic content not found in messages"
+
+
+def test_analysis_agent_no_fallback() -> None:
+    agent = create_analysis_agent(Settings())
+    assert not isinstance(agent.model, FallbackModel)
+
+
+def test_analysis_agent_with_fallback() -> None:
+    settings = Settings(analysis_fallback_model="openrouter:test/fallback")
+    agent = create_analysis_agent(settings)
+    assert isinstance(agent.model, FallbackModel)

@@ -1,3 +1,5 @@
+from pydantic_ai.models.fallback import FallbackModel
+
 from lorebinders.agent import (
     build_extraction_user_prompt,
     create_extraction_agent,
@@ -38,3 +40,14 @@ def test_extraction_agent_run_sync_and_prompt() -> None:
 
     assert system_prompt_content != ""
     assert "Mock content" in system_prompt_content
+
+
+def test_extraction_agent_no_fallback() -> None:
+    agent = create_extraction_agent(Settings())
+    assert not isinstance(agent.model, FallbackModel)
+
+
+def test_extraction_agent_with_fallback() -> None:
+    settings = Settings(extraction_fallback_model="openrouter:test/fallback")
+    agent = create_extraction_agent(settings)
+    assert isinstance(agent.model, FallbackModel)

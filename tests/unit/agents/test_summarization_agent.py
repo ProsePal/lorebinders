@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
@@ -115,3 +116,14 @@ async def test_summarize_binder(tmp_path: Path) -> None:
         shire = binder.categories["Locations"].entities["Shire"]
         assert shire.summary is not None
         assert isinstance(shire.summary, str)
+
+
+def test_summarization_agent_no_fallback() -> None:
+    agent = create_summarization_agent(Settings())
+    assert not isinstance(agent.model, FallbackModel)
+
+
+def test_summarization_agent_with_fallback() -> None:
+    settings = Settings(summarization_fallback_model="openrouter:test/fallback")
+    agent = create_summarization_agent(settings)
+    assert isinstance(agent.model, FallbackModel)
