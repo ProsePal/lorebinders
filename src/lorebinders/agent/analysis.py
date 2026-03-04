@@ -1,5 +1,6 @@
 """Entity analysis using AI agents."""
 
+import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable
@@ -22,7 +23,7 @@ async def _analyze_batch(
     effective_traits: dict[str, list[str]],
     storage: StorageProvider,
 ) -> list[models.EntityProfile]:
-    """Analyze a batch of entities synchronously with abstracted storage.
+    """Analyze a batch of entities with abstracted storage.
 
     Args:
         target_categories: The categories and entities to analyze.
@@ -90,6 +91,55 @@ async def _analyze_batch(
     return profiles
 
 
+async def _analyze_chapter_block(
+    chapter: models.Chapter,
+    cat_map: dict[str, list[str]],
+    agent: Agent[models.AgentDeps, list[models.AnalysisResult]],
+    deps: models.AgentDeps,
+    effective_traits: dict[str, list[str]],
+    storage: StorageProvider,
+    semaphore: asyncio.Semaphore,
+    progress: Callable[[models.ProgressUpdate], None] | None,
+    progress_state: list[int],
+    total_tasks: int,
+) -> list[models.EntityProfile]:
+    """Analyze chapter categories sequentially for prefix caching.
+
+    By processing a chapter's categories sequentially, the LLM provider's prefix
+    cache is primed by the first category and hit by subsequent categories,
+    since they share the identical chapter context prefix.
+    """
+    profiles = []
+
+    async with semaphore:
+        for category, names in cat_map.items():
+            batch_targets = [
+                models.CategoryTarget(name=category, entities=names)
+            ]
+
+            batch_profiles = await _analyze_batch(
+                batch_targets, chapter, agent, deps, effective_traits, storage
+            )
+            profiles.extend(batch_profiles)
+
+            if progress:
+                progress_state[0] += 1
+                msg = (
+                    f"Analyzing batch {progress_state[0]}/{total_tasks} "
+                    f"(Chapter {chapter.number})"
+                )
+                progress(
+                    models.ProgressUpdate(
+                        stage="analysis",
+                        current=progress_state[0],
+                        total=total_tasks,
+                        message=msg,
+                    )
+                )
+
+    return profiles
+
+
 async def analyze_entities(
     entities: SortedExtractions,
     book: models.Book,
@@ -99,7 +149,7 @@ async def analyze_entities(
     storage: StorageProvider,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
 ) -> list[models.EntityProfile]:
-    """Analyze all entities sequentially with abstracted storage.
+    """Analyze all entities in parallel by chapter, preserving prefix caching.
 
     Args:
         entities: The sorted extractions to analyze.
@@ -123,41 +173,38 @@ async def analyze_entities(
             for chapter_num in chapters:
                 chapter_entities[chapter_num][category].append(entity_name)
 
-    profiles = []
-    batch_tasks = []
+    total_tasks = sum(len(cat_map) for cat_map in chapter_entities.values())
+    logger.info(
+        f"Analyzing {total_tasks} entity batches "
+        f"grouped into {len(chapter_entities)} parallel chapter blocks"
+    )
+
+    semaphore = asyncio.Semaphore(10)
+    progress_state = [0]
+    chapter_tasks = []
 
     for chapter_num, cat_map in chapter_entities.items():
         if not (chapter := chapter_map.get(chapter_num)):
             continue
 
-        for category, names in cat_map.items():
-            batch_targets = [
-                models.CategoryTarget(name=category, entities=names)
-            ]
-            batch_tasks.append((batch_targets, chapter))
-
-    total_batches = len(batch_tasks)
-    logger.info(
-        f"Analyzing {total_batches} entity batches "
-        f"across {len(chapter_entities)} chapters"
-    )
-
-    for idx, (batch, chapter) in enumerate(batch_tasks, 1):
-        if progress:
-            progress(
-                models.ProgressUpdate(
-                    stage="analysis",
-                    current=idx,
-                    total=total_batches,
-                    message=(
-                        f"Analyzing batch {idx}/{total_batches} "
-                        f"(Chapter {chapter.number})"
-                    ),
-                )
-            )
-        batch_profiles = await _analyze_batch(
-            batch, chapter, agent, deps, effective_traits, storage
+        task = _analyze_chapter_block(
+            chapter=chapter,
+            cat_map=cat_map,
+            agent=agent,
+            deps=deps,
+            effective_traits=effective_traits,
+            storage=storage,
+            semaphore=semaphore,
+            progress=progress,
+            progress_state=progress_state,
+            total_tasks=total_tasks,
         )
-        profiles.extend(batch_profiles)
+        chapter_tasks.append(task)
+
+    results = await asyncio.gather(*chapter_tasks)
+
+    profiles = []
+    for chapter_profiles in results:
+        profiles.extend(chapter_profiles)
 
     return profiles
