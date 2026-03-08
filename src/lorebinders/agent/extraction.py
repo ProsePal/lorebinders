@@ -7,7 +7,10 @@ from collections.abc import Callable
 from pydantic_ai import Agent
 
 from lorebinders import models
-from lorebinders.agent.factory import build_extraction_user_prompt
+from lorebinders.agent.factory import (
+    build_extraction_user_prompt,
+    run_agent_async,
+)
 from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,7 @@ async def _extract_chapter(
     semaphore: asyncio.Semaphore,
     storage: StorageProvider,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> tuple[int, dict[str, list[str]]]:
     """Extract entities from a chapter.
 
@@ -40,6 +44,7 @@ async def _extract_chapter(
         semaphore: Semaphore for concurrency control.
         storage: The storage provider for persistence.
         progress: Optional callback for progress updates.
+        on_observe: Optional callback for rich observation events.
 
     Returns:
         A tuple of (chapter_number, extraction_data).
@@ -64,8 +69,10 @@ async def _extract_chapter(
                 categories=categories,
                 narrator=config.narrator_config,
             )
-            raw_result = await agent.run(prompt, deps=deps)
-            result = raw_result.output.to_dict()
+            raw_result = await run_agent_async(
+                agent, prompt, deps=deps, on_observe=on_observe
+            )
+            result = raw_result.to_dict()
             storage.save_extraction(chapter.number, result)
 
     return chapter.number, result
@@ -79,6 +86,7 @@ async def extract_book(
     config: models.RunConfiguration,
     storage: StorageProvider,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> dict[int, dict[str, list[str]]]:
     """Extract entities from all chapters in parallel with throttling.
 
@@ -90,6 +98,7 @@ async def extract_book(
         config: The run configuration.
         storage: The storage provider for persistence.
         progress: Optional callback for progress updates.
+        on_observe: Optional callback for rich observation events.
 
     Returns:
         A dictionary mapping chapter numbers to extraction data.
@@ -111,6 +120,7 @@ async def extract_book(
             semaphore,
             storage,
             progress,
+            on_observe,
         )
         for idx, chapter in enumerate(book.chapters, 1)
     ]

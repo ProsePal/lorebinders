@@ -90,6 +90,7 @@ def _aggregate_to_binder(
 async def build_binder(
     config: models.RunConfiguration,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
     extraction_agent: Agent[models.AgentDeps, models.ExtractionResult]
     | None = None,
     analysis_agent: Agent[models.AgentDeps, list[models.AnalysisResult]]
@@ -103,6 +104,7 @@ async def build_binder(
     Args:
         config: The run configuration.
         progress: Optional callback for progress updates.
+        on_observe: Optional callback for rich observation events.
         extraction_agent: Optional agent for extraction.
         analysis_agent: Optional agent for analysis.
         summarization_agent: Optional agent for summarization.
@@ -130,14 +132,40 @@ async def build_binder(
     )
     storage.set_workspace(config.author_name, config.book_title)
 
+    if on_observe:
+        on_observe(
+            models.ObservationEvent(
+                type=models.ObservationType.STAGE_STARTED,
+                stage="ingestion",
+                message=f"Ingesting {config.book_path.name}",
+            )
+        )
+
     logger.debug("Ingesting book...")
     book_text = convert_to_text(config.book_path)
     storage.save_book(config.book_title, book_text)
     book = ingest(book_text, config.book_path.stem)
 
+    if on_observe:
+        on_observe(
+            models.ObservationEvent(
+                type=models.ObservationType.STAGE_STARTED,
+                stage="extraction",
+                message="Starting entity extraction",
+                metadata={"total_chapters": len(book.chapters)},
+            )
+        )
+
     logger.debug("Starting extraction phase...")
     raw_extractions = await extract_book(
-        book, ext_agent, deps, all_categories, config, storage, progress
+        book,
+        ext_agent,
+        deps,
+        all_categories,
+        config,
+        storage,
+        progress,
+        on_observe,
     )
 
     logger.debug("Starting early refinement...")
@@ -145,6 +173,19 @@ async def build_binder(
         config.narrator_config.name if config.narrator_config else None
     )
     sorted_extractions = sort_extractions(raw_extractions, narrator_name)
+
+    if on_observe:
+        total_batches = sum(
+            len(entities) for entities in sorted_extractions.values()
+        )
+        on_observe(
+            models.ObservationEvent(
+                type=models.ObservationType.STAGE_STARTED,
+                stage="analysis",
+                message="Starting entity analysis",
+                metadata={"total_batches": total_batches},
+            )
+        )
 
     logger.debug("Starting analysis phase...")
     profiles = await analyze_entities(
@@ -155,19 +196,60 @@ async def build_binder(
         effective_traits,
         storage,
         progress=progress,
+        on_observe=on_observe,
     )
 
     logger.debug("Aggregating profiles and cleaning traits...")
     binder = _aggregate_to_binder(profiles)
 
+    if on_observe:
+        total_entities = sum(
+            len(c.entities) for c in binder.categories.values()
+        )
+        on_observe(
+            models.ObservationEvent(
+                type=models.ObservationType.STAGE_STARTED,
+                stage="summarization",
+                message="Starting entity summarization",
+                metadata={"total_entities": total_entities},
+            )
+        )
+
     logger.debug("Starting summarization phase...")
-    await summarize_binder(binder, storage, sum_agent, deps)
+    await summarize_binder(
+        binder,
+        storage,
+        sum_agent,
+        deps,
+        progress=progress,
+        on_observe=on_observe,
+    )
 
     safe_title = sanitize_filename(config.book_title)
     output_dir = ensure_workspace(config.author_name, config.book_title)
     output_file = output_dir / f"{safe_title}_story_bible.pdf"
+
+    if on_observe:
+        on_observe(
+            models.ObservationEvent(
+                type=models.ObservationType.STAGE_STARTED,
+                stage="reporting",
+                message=f"Generating PDF report to {output_file.name}",
+            )
+        )
+
     logger.debug(f"Generating report to {output_file}...")
     generate_pdf_report(binder, output_file)
     logger.debug("Report generation complete.")
+
+    if on_observe:
+        on_observe(
+            models.ObservationEvent(
+                type=models.ObservationType.STAGE_COMPLETED,
+                stage="workflow",
+                message="Binder build complete!",
+                metadata={"output_file": str(output_file)},
+            )
+        )
 
     return output_file

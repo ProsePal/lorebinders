@@ -1,6 +1,7 @@
 """Entity summarization using AI agents."""
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
@@ -9,8 +10,16 @@ from lorebinders.agent.factory import (
     build_summarization_user_prompt,
     create_summarization_agent,
     load_prompt_from_assets,
+    run_agent_async,
 )
-from lorebinders.models import AgentDeps, Binder, EntityRecord, SummarizerResult
+from lorebinders.models import (
+    AgentDeps,
+    Binder,
+    EntityRecord,
+    ObservationEvent,
+    ProgressUpdate,
+    SummarizerResult,
+)
 from lorebinders.settings import get_settings
 
 if TYPE_CHECKING:
@@ -44,8 +53,9 @@ async def _summarize_entity(
     name: str,
     agent: Agent[AgentDeps, SummarizerResult],
     prompt: str,
-    storage: StorageProvider,
+    storage: "StorageProvider",
     deps: AgentDeps,
+    on_observe: Callable[[ObservationEvent], None] | None = None,
 ) -> str:
     """Summarize an entity using the AI agent with abstracted storage.
 
@@ -56,6 +66,7 @@ async def _summarize_entity(
         prompt: The prompt to use for summarization.
         storage: The storage provider for persistence.
         deps: The dependencies to inject into the agent.
+        on_observe: Optional callback for rich observation events.
 
     Returns:
         str: The summary text.
@@ -66,8 +77,10 @@ async def _summarize_entity(
 
     logger.info(f"Summarizing {category}: {name}")
     try:
-        result = await agent.run(prompt, deps=deps)
-        summary_text = result.output.summary
+        result_data = await run_agent_async(
+            agent, prompt, deps=deps, on_observe=on_observe
+        )
+        summary_text = result_data.summary
         storage.save_summary(category, name, summary_text)
         logger.debug(f"Summary saved for {category}: {name}")
         return summary_text
@@ -79,9 +92,11 @@ async def _summarize_entity(
 
 async def summarize_binder(
     binder: Binder,
-    storage: StorageProvider,
+    storage: "StorageProvider",
     agent: Agent[AgentDeps, SummarizerResult] | None = None,
     deps: AgentDeps | None = None,
+    progress: Callable[[ProgressUpdate], None] | None = None,
+    on_observe: Callable[[ObservationEvent], None] | None = None,
 ) -> None:
     """Summarize entities in the binder asynchronously in-place.
 
@@ -92,6 +107,8 @@ async def summarize_binder(
         storage: The storage provider for persistence.
         agent: The agent to use for summarization.
         deps: Optional dependencies for the agent.
+        progress: Optional callback for progress updates.
+        on_observe: Optional callback for rich observation events.
     """
     import asyncio
 
@@ -106,18 +123,32 @@ async def summarize_binder(
 
     semaphore = asyncio.Semaphore(10)
     tasks = []
-    entity_refs = []
+    progress_state = [0]
 
-    async def _throttled_summarize(e: "EntityRecord", p: str) -> str:
+    async def _throttled_summarize(
+        e: "EntityRecord", p: str, total: int
+    ) -> str:
         async with semaphore:
-            return await _summarize_entity(
+            res = await _summarize_entity(
                 e.category,
                 e.name,
                 agent,
                 p,
                 storage,
                 deps,
+                on_observe=on_observe,
             )
+            if progress:
+                progress_state[0] += 1
+                progress(
+                    ProgressUpdate(
+                        stage="summarization",
+                        current=progress_state[0],
+                        total=total,
+                        message=f"Summarized {e.category}: {e.name}",
+                    )
+                )
+            return res
 
     for category_record in binder.categories.values():
         for entity in category_record.entities.values():
@@ -128,10 +159,14 @@ async def summarize_binder(
                     category=entity.category,
                     context_data=context_str,
                 )
-                tasks.append(_throttled_summarize(entity, prompt))
-                entity_refs.append(entity)
+                tasks.append((entity, prompt))
 
+    total_tasks = len(tasks)
     if tasks:
-        summaries = await asyncio.gather(*tasks)
-        for entity, summary in zip(entity_refs, summaries, strict=True):
+        logger.info(f"Summarizing {total_tasks} entities...")
+        actual_tasks = [
+            _throttled_summarize(e, p, total_tasks) for e, p in tasks
+        ]
+        summaries = await asyncio.gather(*actual_tasks)
+        for (entity, _), summary in zip(tasks, summaries, strict=True):
             entity.summary = summary

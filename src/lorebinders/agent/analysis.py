@@ -8,7 +8,10 @@ from collections.abc import Callable
 from pydantic_ai import Agent
 
 from lorebinders import models
-from lorebinders.agent.factory import build_analysis_user_prompt
+from lorebinders.agent.factory import (
+    build_analysis_user_prompt,
+    run_agent_async,
+)
 from lorebinders.storage.provider import StorageProvider
 from lorebinders.types import SortedExtractions
 
@@ -22,6 +25,7 @@ async def _analyze_batch(
     deps: models.AgentDeps,
     effective_traits: dict[str, list[str]],
     storage: StorageProvider,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> list[models.EntityProfile]:
     """Analyze a batch of entities with abstracted storage.
 
@@ -32,6 +36,7 @@ async def _analyze_batch(
         deps: Dependencies for the agent.
         effective_traits: Map of category to traits.
         storage: The storage provider for persistence.
+        on_observe: Optional callback for rich observation events.
 
     Returns:
         A list of analyzed entity profiles.
@@ -72,9 +77,11 @@ async def _analyze_batch(
         context_text=chapter.content,
         categories=to_analyze,
     )
-    result = await agent.run(full_prompt, deps=deps)
+    result_data = await run_agent_async(
+        agent, full_prompt, deps=deps, on_observe=on_observe
+    )
 
-    for r in result.output:
+    for r in result_data:
         profile_traits: models.EntityTraits = {
             trait.trait: trait.value for trait in r.traits
         }
@@ -102,6 +109,7 @@ async def _analyze_chapter_block(
     progress: Callable[[models.ProgressUpdate], None] | None,
     progress_state: list[int],
     total_tasks: int,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> list[models.EntityProfile]:
     """Analyze chapter categories sequentially for prefix caching.
 
@@ -118,7 +126,13 @@ async def _analyze_chapter_block(
             ]
 
             batch_profiles = await _analyze_batch(
-                batch_targets, chapter, agent, deps, effective_traits, storage
+                batch_targets,
+                chapter,
+                agent,
+                deps,
+                effective_traits,
+                storage,
+                on_observe=on_observe,
             )
             profiles.extend(batch_profiles)
 
@@ -148,6 +162,7 @@ async def analyze_entities(
     effective_traits: dict[str, list[str]],
     storage: StorageProvider,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> list[models.EntityProfile]:
     """Analyze all entities in parallel by chapter, preserving prefix caching.
 
@@ -159,6 +174,7 @@ async def analyze_entities(
         effective_traits: Map of category to traits.
         storage: The storage provider for persistence.
         progress: Optional callback for progress updates.
+        on_observe: Optional callback for rich observation events.
 
     Returns:
         A list of all analyzed entity profiles.
@@ -198,6 +214,7 @@ async def analyze_entities(
             progress=progress,
             progress_state=progress_state,
             total_tasks=total_tasks,
+            on_observe=on_observe,
         )
         chapter_tasks.append(task)
 

@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,8 @@ from lorebinders.models import (
     CategoryTarget,
     ExtractionResult,
     NarratorConfig,
+    ObservationEvent,
+    ObservationType,
     SummarizerResult,
 )
 
@@ -92,6 +95,7 @@ def run_agent(
     user_prompt: str,
     deps: AgentDepsT,
     model_settings: ModelSettings | None = None,
+    on_observe: Callable[[ObservationEvent], None] | None = None,
 ) -> RunOutputDataT:
     """Run an agent synchronously and return the output.
 
@@ -100,20 +104,115 @@ def run_agent(
         user_prompt: The user prompt to send to the agent.
         deps: The dependencies to inject into the agent.
         model_settings: Optional settings for the model.
+        on_observe: Optional callback for rich observation events.
 
     Returns:
         The output data from the agent run.
     """
     model_name = getattr(agent.model, "model_name", "unknown")
     logger.debug(f"Running agent with model: {model_name}")
+
+    if on_observe:
+        on_observe(
+            ObservationEvent(
+                type=ObservationType.AGENT_RUN_STARTED,
+                stage="agent",
+                message=f"Running agent with model {model_name}",
+                metadata={"model": str(model_name)},
+            )
+        )
+
     try:
         result = agent.run_sync(
             user_prompt, deps=deps, model_settings=model_settings
         )
         logger.debug("Agent run completed successfully")
+
+        if on_observe:
+            on_observe(
+                ObservationEvent(
+                    type=ObservationType.AGENT_RUN_COMPLETED,
+                    stage="agent",
+                    message=f"Agent run completed with model {model_name}",
+                    metadata={"model": str(model_name)},
+                )
+            )
+
         return result.output
     except Exception as e:
         logger.error(f"Agent run failed: {e}")
+        if on_observe:
+            on_observe(
+                ObservationEvent(
+                    type=ObservationType.ERROR,
+                    stage="agent",
+                    message=f"Agent run failed: {str(e)}",
+                    metadata={"model": str(model_name), "error": str(e)},
+                )
+            )
+        raise
+
+
+async def run_agent_async(
+    agent: Agent[AgentDepsT, RunOutputDataT],
+    user_prompt: str,
+    deps: AgentDepsT,
+    model_settings: ModelSettings | None = None,
+    on_observe: Callable[[ObservationEvent], None] | None = None,
+) -> RunOutputDataT:
+    """Run an agent asynchronously and return the output.
+
+    Args:
+        agent: The agent to run.
+        user_prompt: The user prompt to send to the agent.
+        deps: The dependencies to inject into the agent.
+        model_settings: Optional settings for the model.
+        on_observe: Optional callback for rich observation events.
+
+    Returns:
+        The output data from the agent run.
+    """
+    model_name = getattr(agent.model, "model_name", "unknown")
+    logger.debug(f"Running agent (async) with model: {model_name}")
+
+    if on_observe:
+        on_observe(
+            ObservationEvent(
+                type=ObservationType.AGENT_RUN_STARTED,
+                stage="agent",
+                message=f"Running agent with model {model_name}",
+                metadata={"model": str(model_name)},
+            )
+        )
+
+    try:
+        result = await agent.run(
+            user_prompt, deps=deps, model_settings=model_settings
+        )
+        logger.debug("Agent run completed successfully")
+
+        if on_observe:
+            on_observe(
+                ObservationEvent(
+                    type=ObservationType.AGENT_RUN_COMPLETED,
+                    stage="agent",
+                    message=f"Agent run completed with model {model_name}",
+                    metadata={"model": str(model_name)},
+                )
+            )
+
+        return result.output
+    except Exception as e:
+        logger.error(f"Agent run failed: {e}")
+        if on_observe:
+            on_observe(
+                ObservationEvent(
+                    type=ObservationType.ERROR,
+                    stage="agent",
+                    message=f"Agent run failed: {str(e)}",
+                    metadata={"model": str(model_name), "error": str(e)},
+                )
+            )
         raise
 
 

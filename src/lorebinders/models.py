@@ -1,7 +1,9 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -216,3 +218,24 @@ class ProgressUpdate(BaseModel):
     current: int
     total: int
     message: str
+
+
+class ObservationType(str, Enum):
+    """Types of observation events."""
+
+    STAGE_STARTED = "stage_started"
+    STAGE_COMPLETED = "stage_completed"
+    AGENT_RUN_STARTED = "agent_run_started"
+    AGENT_RUN_COMPLETED = "agent_run_completed"
+    ERROR = "error"
+    METRIC = "metric"
+
+
+class ObservationEvent(BaseModel):
+    """A rich observation event for monitoring."""
+
+    type: ObservationType
+    stage: str
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    metadata: dict[str, Any] = Field(default_factory=dict)
