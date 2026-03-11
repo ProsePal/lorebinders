@@ -5,24 +5,26 @@ from pathlib import Path
 
 from pydantic_ai import Agent
 
-from lorebinders.models import (
-    ObservationEvent,
-    ProgressUpdate,
-    RunConfiguration,
-)
+from lorebinders import models
 from lorebinders.workflow import build_binder
 
 logger = logging.getLogger(__name__)
 
 
 def run(
-    config: RunConfiguration,
-    progress: Callable[[ProgressUpdate], None] | None = None,
-    on_observe: Callable[[ObservationEvent], None] | None = None,
+    config: models.RunConfiguration,
+    progress: Callable[[models.ProgressUpdate], None] | None = None,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
     log_file: Path | None = None,
-    extraction_agent: Agent | None = None,
-    analysis_agent: Agent | None = None,
-    summarization_agent: Agent | None = None,
+    extraction_agent: (
+        Agent[models.AgentDeps, models.ExtractionResult] | None
+    ) = None,
+    analysis_agent: (
+        Agent[models.AgentDeps, list[models.AnalysisResult]] | None
+    ) = None,
+    summarization_agent: (
+        Agent[models.AgentDeps, models.SummarizerResult] | None
+    ) = None,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
 

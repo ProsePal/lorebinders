@@ -1,75 +1,78 @@
 """Entity summarization using AI agents."""
 
+import asyncio
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
 
+from lorebinders import models
 from lorebinders.agent.factory import (
     build_summarization_user_prompt,
     create_summarization_agent,
     load_prompt_from_assets,
     run_agent_async,
 )
-from lorebinders.models import (
-    AgentDeps,
-    Binder,
-    EntityRecord,
-    ObservationEvent,
-    ProgressUpdate,
-    SummarizerResult,
-)
 from lorebinders.settings import get_settings
-
-if TYPE_CHECKING:
-    from lorebinders.storage.provider import StorageProvider
+from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
 
 
-def _format_context(details: dict) -> str:
+def _format_traits(traits: dict[str, list[str] | str]) -> list[str]:
+    """Helper to format traits for context.
+
+    Args:
+        traits: The traits dictionary.
+
+    Returns:
+        A list of formatted trait strings.
+    """
+    lines = []
+    for trait, value in traits.items():
+        val_str = ", ".join(value) if isinstance(value, list) else str(value)
+        lines.append(f"  - {trait}: {val_str}")
+    return lines
+
+
+def _format_context(details: dict[int, models.EntityAppearance]) -> str:
     """Format the entity data into a readable string for the AI.
 
     Args:
-        details: The entity details containing appearances.
+        details: Mapping of chapter numbers to entity appearances.
 
     Returns:
-        str: The formatted data.
+        A formatted string containing entity traits across chapters.
     """
     lines = []
     for chap_num, appearance in details.items():
         lines.append(f"Chapter {chap_num}:")
-        for trait, value in appearance.traits.items():
-            val_str = (
-                ", ".join(value) if isinstance(value, list) else str(value)
-            )
-            lines.append(f"  - {trait}: {val_str}")
+        lines.extend(_format_traits(appearance.traits))
     return "\n".join(lines)
 
 
 async def _summarize_entity(
     category: str,
     name: str,
-    agent: Agent[AgentDeps, SummarizerResult],
+    agent: Agent[models.AgentDeps, models.SummarizerResult],
     prompt: str,
-    storage: "StorageProvider",
-    deps: AgentDeps,
-    on_observe: Callable[[ObservationEvent], None] | None = None,
+    storage: StorageProvider,
+    deps: models.AgentDeps,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> str:
     """Summarize an entity using the AI agent with abstracted storage.
 
     Args:
-        category: The category of the entity.
-        name: The name of the entity.
-        agent: The agent to use for summarization.
-        prompt: The prompt to use for summarization.
-        storage: The storage provider for persistence.
-        deps: The dependencies to inject into the agent.
-        on_observe: Optional callback for rich observation events.
+        category: The entity category.
+        name: The entity name.
+        agent: The summarization agent.
+        prompt: The user prompt.
+        storage: The storage provider.
+        deps: Agent dependencies.
+        on_observe: Optional observation callback.
 
     Returns:
-        str: The summary text.
+        The generated summary text.
     """
     if storage.summary_exists(category, name):
         logger.debug(f"Loading cached summary for {category}: {name}")
@@ -80,93 +83,186 @@ async def _summarize_entity(
         result_data = await run_agent_async(
             agent, prompt, deps=deps, on_observe=on_observe
         )
-        summary_text = result_data.summary
+        summary_text: str = result_data.summary
         storage.save_summary(category, name, summary_text)
         logger.debug(f"Summary saved for {category}: {name}")
         return summary_text
-
     except Exception as e:
         logger.error(f"Failed to summarize {name}: {e}")
         raise
 
 
+def _update_progress(
+    progress: Callable[[models.ProgressUpdate], None] | None,
+    state: list[int],
+    total: int,
+    category: str,
+    name: str,
+) -> None:
+    """Helper to update progress state.
+
+    Args:
+        progress: Progress callback.
+        state: Shared state for progress tracking.
+        total: Total entities.
+        category: Entity category.
+        name: Entity name.
+    """
+    if not progress:
+        return
+    state[0] += 1
+    progress(
+        models.ProgressUpdate(
+            stage="summarization",
+            current=state[0],
+            total=total,
+            message=f"Summarized {category}: {name}",
+        )
+    )
+
+
+async def _throttled_summarize(
+    entity: models.EntityRecord,
+    prompt: str,
+    total: int,
+    semaphore: asyncio.Semaphore,
+    agent: Agent[models.AgentDeps, models.SummarizerResult],
+    storage: StorageProvider,
+    deps: models.AgentDeps,
+    on_observe: Callable[[models.ObservationEvent], None] | None,
+    progress: Callable[[models.ProgressUpdate], None] | None,
+    progress_state: list[int],
+) -> str:
+    """Run summary with concurrency limit and progress tracking.
+
+    Args:
+        entity: The entity record.
+        prompt: The user prompt.
+        total: Total entities.
+        semaphore: Concurrency semaphore.
+        agent: The AI agent.
+        storage: The storage provider.
+        deps: Agent dependencies.
+        on_observe: Observation callback.
+        progress: Progress callback.
+        progress_state: Shared state for progress tracking.
+
+    Returns:
+        The generated summary text.
+    """
+    async with semaphore:
+        res = await _summarize_entity(
+            entity.category,
+            entity.name,
+            agent,
+            prompt,
+            storage,
+            deps,
+            on_observe=on_observe,
+        )
+        _update_progress(
+            progress, progress_state, total, entity.category, entity.name
+        )
+        return res
+
+
+def _collect_tasks_from_category(
+    tasks: list[tuple[models.EntityRecord, str]],
+    category_record: models.CategoryRecord,
+) -> None:
+    """Helper to collect tasks from a category record.
+
+    Args:
+        tasks: List to accumulate tasks.
+        category_record: The category record.
+    """
+    for entity in category_record.entities.values():
+        if entity.summary or not entity.appearances:
+            continue
+        context_str = _format_context(entity.appearances)
+        prompt = build_summarization_user_prompt(
+            entity_name=entity.name,
+            category=entity.category,
+            context_data=context_str,
+        )
+        tasks.append((entity, prompt))
+
+
+def _collect_tasks(
+    binder: models.Binder,
+) -> list[tuple[models.EntityRecord, str]]:
+    """Collect all entities that need summarization.
+
+    Args:
+        binder: The full binder model.
+
+    Returns:
+        A list of tuples containing the entity record and its summary prompt.
+    """
+    tasks: list[tuple[models.EntityRecord, str]] = []
+    for category_record in binder.categories.values():
+        _collect_tasks_from_category(tasks, category_record)
+    return tasks
+
+
 async def summarize_binder(
-    binder: Binder,
-    storage: "StorageProvider",
-    agent: Agent[AgentDeps, SummarizerResult] | None = None,
-    deps: AgentDeps | None = None,
-    progress: Callable[[ProgressUpdate], None] | None = None,
-    on_observe: Callable[[ObservationEvent], None] | None = None,
+    binder: models.Binder,
+    storage: StorageProvider,
+    agent: Agent[models.AgentDeps, models.SummarizerResult] | None = None,
+    deps: models.AgentDeps | None = None,
+    progress: Callable[[models.ProgressUpdate], None] | None = None,
+    on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> None:
     """Summarize entities in the binder asynchronously in-place.
 
-    Includes throttling and abstracted storage.
-
     Args:
-        binder: The refined binder model.
-        storage: The storage provider for persistence.
-        agent: The agent to use for summarization.
-        deps: Optional dependencies for the agent.
-        progress: Optional callback for progress updates.
-        on_observe: Optional callback for rich observation events.
+        binder: The binder model to update.
+        storage: The storage provider.
+        agent: Optional agent override.
+        deps: Optional dependencies override.
+        progress: Optional progress callback.
+        on_observe: Optional observation callback.
     """
-    import asyncio
-
     if agent is None:
         agent = create_summarization_agent()
-
     if deps is None:
-        deps = AgentDeps(
-            settings=get_settings(),
-            prompt_loader=load_prompt_from_assets,
+        deps = models.AgentDeps(
+            settings=get_settings(), prompt_loader=load_prompt_from_assets
         )
 
-    semaphore = asyncio.Semaphore(10)
-    tasks = []
+    tasks = _collect_tasks(binder)
+    if not tasks:
+        return
+
+    logger.info(f"Summarizing {len(tasks)} entities...")
+    semaphore = asyncio.Semaphore(deps.settings.max_concurrency)
     progress_state = [0]
 
-    async def _throttled_summarize(
-        e: "EntityRecord", p: str, total: int
-    ) -> str:
-        async with semaphore:
-            res = await _summarize_entity(
-                e.category,
-                e.name,
-                agent,
+    chapter_tasks: list[asyncio.Task[str]] = []
+    for e, p in tasks:
+        task = asyncio.create_task(
+            _throttled_summarize(
+                e,
                 p,
+                len(tasks),
+                semaphore,
+                agent,
                 storage,
                 deps,
-                on_observe=on_observe,
+                on_observe,
+                progress,
+                progress_state,
             )
-            if progress:
-                progress_state[0] += 1
-                progress(
-                    ProgressUpdate(
-                        stage="summarization",
-                        current=progress_state[0],
-                        total=total,
-                        message=f"Summarized {e.category}: {e.name}",
-                    )
-                )
-            return res
+        )
+        chapter_tasks.append(task)
 
-    for category_record in binder.categories.values():
-        for entity in category_record.entities.values():
-            if not entity.summary and entity.appearances:
-                context_str = _format_context(entity.appearances)
-                prompt = build_summarization_user_prompt(
-                    entity_name=entity.name,
-                    category=entity.category,
-                    context_data=context_str,
-                )
-                tasks.append((entity, prompt))
-
-    total_tasks = len(tasks)
-    if tasks:
-        logger.info(f"Summarizing {total_tasks} entities...")
-        actual_tasks = [
-            _throttled_summarize(e, p, total_tasks) for e, p in tasks
-        ]
-        summaries = await asyncio.gather(*actual_tasks)
-        for (entity, _), summary in zip(tasks, summaries, strict=True):
-            entity.summary = summary
+    results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
+    for i, res in enumerate(results):
+        entity, _ = tasks[i]
+        if isinstance(res, Exception):
+            logger.error(f"Summarization failed for {entity.name}: {res}")
+            entity.summary = "Error during summarization."
+        elif isinstance(res, str):
+            entity.summary = res
+        else:
+            entity.summary = "Unexpected error."

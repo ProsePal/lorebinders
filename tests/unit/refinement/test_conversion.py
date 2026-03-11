@@ -1,5 +1,6 @@
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,7 +13,7 @@ from lorebinders.refinement.conversion import (
 
 
 @pytest.fixture
-def mock_ebook2text():
+def mock_ebook2text() -> Generator[MagicMock, None, None]:
     with patch("lorebinders.refinement.conversion.ebook2text") as mock:
         yield mock
 
@@ -56,7 +57,7 @@ def test_empty_chapter_filter() -> None:
     assert "Chapter 2" in chapters[1].content
 
 
-def test_convert_to_text(mock_ebook2text, tmp_path) -> None:
+def test_convert_to_text(mock_ebook2text: MagicMock, tmp_path: Path) -> None:
     """Test that convert_to_text calls ebook2text with correct metadata."""
     source_file = tmp_path / "book.epub"
     source_file.touch()
@@ -73,7 +74,7 @@ def test_convert_to_text(mock_ebook2text, tmp_path) -> None:
     )
 
 
-def test_convert_to_text_file_not_found(tmp_path) -> None:
+def test_convert_to_text_file_not_found(tmp_path: Path) -> None:
     """Test that FileNotFoundError is raised if file doesn't exist."""
     with pytest.raises(FileNotFoundError):
         convert_to_text(Path("nonexistent.epub"))

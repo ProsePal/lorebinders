@@ -10,7 +10,7 @@ from pydantic_ai.models.test import TestModel
 from lorebinders.agent.factory import (
     build_summarization_user_prompt,
     create_summarization_agent,
-    run_agent,
+    run_agent_async,
 )
 from lorebinders.agent.summarization import summarize_binder
 from lorebinders.models import AgentDeps, Binder, SummarizerResult
@@ -18,7 +18,8 @@ from lorebinders.settings import Settings
 from lorebinders.storage.providers.test import TestStorageProvider
 
 
-def test_summarization_agent_run_sync_and_prompt() -> None:
+@pytest.mark.anyio
+async def test_summarization_agent_run_async_and_prompt() -> None:
     captured_messages: list[ModelMessage] = []
 
     expected_result_dict = {
@@ -52,7 +53,7 @@ def test_summarization_agent_run_sync_and_prompt() -> None:
             context_data="He is a wizard. He wears grey.",
         )
 
-        result = run_agent(agent, prompt, deps)
+        result = await run_agent_async(agent, prompt, deps)
 
         assert result == expected_result_obj
 
@@ -69,10 +70,10 @@ def test_summarization_agent_run_sync_and_prompt() -> None:
     )
 
     with agent.override(model=model):
-        result = agent.run_sync(prompt, deps=deps)
+        run_result = await agent.run(prompt, deps=deps)
 
-    assert isinstance(result.output, SummarizerResult)
-    assert isinstance(result.output.summary, str)
+    assert isinstance(run_result.output, SummarizerResult)
+    assert isinstance(run_result.output.summary, str)
 
     assert "Frodo" in prompt
     assert "Characters" in prompt
@@ -105,7 +106,7 @@ async def test_summarize_binder(tmp_path: Path) -> None:
     storage.set_workspace("TestAuthor", "TestTitle")
 
     with agent.override(model=model, deps=deps):
-        await summarize_binder(binder, storage=storage, agent=agent)
+        await summarize_binder(binder, storage=storage, agent=agent, deps=deps)
 
         assert "Characters" in binder.categories
         frodo = binder.categories["Characters"].entities["Frodo"]

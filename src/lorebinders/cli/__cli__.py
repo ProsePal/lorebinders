@@ -22,16 +22,61 @@ console = Console()
 logger = logging.getLogger("lorebinders.cli")
 
 
+class ProgressHandler:
+    """Handles rich progress updates from the application."""
+
+    def __init__(self, progress: Progress) -> None:
+        """Initialise tasks for each pipeline stage."""
+        self.progress = progress
+        self.extraction_task = progress.add_task("Extracting...", total=None)
+        self.analysis_task = progress.add_task(
+            "Analyzing...", total=None, visible=False
+        )
+        self.summarization_task = progress.add_task(
+            "Summarizing...", total=None, visible=False
+        )
+
+    def __call__(self, update: ProgressUpdate) -> None:
+        """Route a progress update to the correct rich task."""
+        match update.stage:
+            case "extraction":
+                self.progress.update(
+                    self.extraction_task,
+                    completed=update.current,
+                    total=update.total,
+                    description=update.message,
+                )
+            case "analysis":
+                self.progress.update(
+                    self.analysis_task,
+                    visible=True,
+                    completed=update.current,
+                    total=update.total,
+                    description=update.message,
+                )
+            case "summarization":
+                self.progress.update(
+                    self.summarization_task,
+                    visible=True,
+                    completed=update.current,
+                    total=update.total,
+                    description=update.message,
+                )
+
+
+def _setup_logging(log_file: Path | None, verbose: bool) -> None:
+    if log_file or verbose:
+        configure_logging(log_file)
+    if verbose:
+        logging.getLogger("lorebinders").setLevel(logging.DEBUG)
+
+
 @cli.command()
 def main(
     book_path: Annotated[
         Path,
         typer.Argument(
-            help="Path to the ebook file (epub, pdf, etc.)",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
+            exists=True, file_okay=True, dir_okay=False, readable=True
         ),
     ],
     author_name: Annotated[str, typer.Option("--author", help="Author's name")],
@@ -59,26 +104,17 @@ def main(
 ) -> None:
     """LoreBinders: Create a Story Bible from your book."""
     config = build_run_configuration(
-        book_path=book_path,
-        author_name=author_name,
-        book_title=book_title,
-        narrator_name=narrator_name,
-        is_1st_person=is_1st_person,
-        traits=traits,
-        categories=categories,
+        book_path,
+        author_name,
+        book_title,
+        narrator_name,
+        is_1st_person,
+        traits,
+        categories,
     )
-
-    if log_file or verbose:
-        configure_logging(log_file)
-        if verbose:
-            logging.getLogger("lorebinders").setLevel(logging.DEBUG)
-
-    logger.info(f"Starting LoreBinders CLI with book: {book_path}")
-    if verbose:
-        logger.debug(f"Configuration: {config}")
+    _setup_logging(log_file, verbose)
 
     console.print("[bold blue]Starting LoreBinders...[/bold blue]")
-
     try:
         with Progress(
             SpinnerColumn(),
@@ -88,40 +124,10 @@ def main(
             TimeRemainingColumn(),
             console=console,
         ) as progress:
-            extraction_task = progress.add_task(
-                "Extracting...", total=None, visible=True
-            )
-            analysis_task = progress.add_task(
-                "Analyzing...", total=None, visible=False
-            )
+            handler = ProgressHandler(progress)
+            output = app.run(config, progress=handler, log_file=log_file)
 
-            def handle_progress(update: ProgressUpdate) -> None:
-                if update.stage == "extraction":
-                    progress.update(
-                        extraction_task,
-                        completed=update.current,
-                        total=update.total,
-                        description=update.message,
-                    )
-                elif update.stage == "analysis":
-                    progress.update(
-                        analysis_task,
-                        visible=True,
-                        completed=update.current,
-                        total=update.total,
-                        description=update.message,
-                    )
-
-            output_path = app.run(
-                config, progress=handle_progress, log_file=log_file
-            )
-
-        logger.info(
-            f"LoreBinders completed successfully. Output: {output_path}"
-        )
-        console.print(
-            f"[bold green]Complete![/bold green] Report saved to: {output_path}"
-        )
+        console.print(f"[bold green]Complete![/bold green] Report: {output}")
     except Exception as e:
         logger.exception("LoreBinders run failed")
         console.print(f"[bold red]Build Failed:[/bold red] {e}")

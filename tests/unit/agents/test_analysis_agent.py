@@ -1,22 +1,24 @@
+import pytest
 from pydantic_ai.models.fallback import FallbackModel
 
-from lorebinders.agent import (
+from lorebinders.agent.factory import (
     build_analysis_user_prompt,
     create_analysis_agent,
-    run_agent,
+    run_agent_async,
 )
 from lorebinders.models import (
     AgentDeps,
     AnalysisResult,
+    AnalyzedTrait,
     CategoryTarget,
-    TraitValue,
 )
 from lorebinders.settings import Settings
 from tests.utils import create_mock_model, get_system_prompt
 
 
-def test_analysis_agent_run_sync_and_prompt() -> None:
-    """Test run_sync execution and system prompt generation using PydanticAI."""
+@pytest.mark.anyio
+async def test_analysis_agent_run_async_and_prompt() -> None:
+    """Test run execution and system prompt generation using PydanticAI."""
     expected_result_dict = [
         {
             "entity_name": "Gandalf",
@@ -36,8 +38,10 @@ def test_analysis_agent_run_sync_and_prompt() -> None:
         entity_name="Gandalf",
         category="Character",
         traits=[
-            TraitValue(trait="Role", value="Wizard", evidence="Uses magic"),
-            TraitValue(trait="Origin", value="Maiar", evidence="From Valinor"),
+            AnalyzedTrait(trait="Role", value="Wizard", evidence="Uses magic"),
+            AnalyzedTrait(
+                trait="Origin", value="Maiar", evidence="From Valinor"
+            ),
         ],
     )
 
@@ -65,7 +69,7 @@ def test_analysis_agent_run_sync_and_prompt() -> None:
             categories=categories,
         )
 
-        result = run_agent(agent, prompt, deps)
+        result = await run_agent_async(agent, prompt, deps)
 
         assert result == [expected_result_obj]
 

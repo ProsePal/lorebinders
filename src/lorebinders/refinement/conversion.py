@@ -19,11 +19,15 @@ def convert_to_text(source: Path) -> str:
 
     Raises:
         FileNotFoundError: If the source file does not exist.
+        TypeError: If the converted text is not a string.
     """
     if not source.exists():
         raise FileNotFoundError(f"File not found: {source}")
     metadata = {"title": source.stem, "author": "Unknown"}
-    return ebook2text.convert_file(source, metadata, save_file=False)
+    text = ebook2text.convert_file(source, metadata, save_file=False)
+    if not isinstance(text, str):
+        raise TypeError(f"Expected str from ebook2text, got {type(text)}")
+    return text
 
 
 def _extract_chapters(text: str) -> list[Chapter]:

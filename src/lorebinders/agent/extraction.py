@@ -16,6 +16,67 @@ from lorebinders.storage.provider import StorageProvider
 logger = logging.getLogger(__name__)
 
 
+def _report_extraction_progress(
+    progress: Callable[[models.ProgressUpdate], None] | None,
+    chapter: models.Chapter,
+    idx: int,
+    total: int,
+) -> None:
+    """Helper to report extraction progress.
+
+    Args:
+        progress: Progress callback.
+        chapter: The chapter model.
+        idx: Current index.
+        total: Total count.
+    """
+    if not progress:
+        return
+    progress(
+        models.ProgressUpdate(
+            stage="extraction",
+            current=idx,
+            total=total,
+            message=f"Extracting chapter {chapter.number}: {chapter.title}",
+        )
+    )
+
+
+async def _perform_extraction(
+    chapter: models.Chapter,
+    agent: Agent[models.AgentDeps, models.ExtractionResult],
+    deps: models.AgentDeps,
+    categories: list[str],
+    config: models.RunConfiguration,
+    semaphore: asyncio.Semaphore,
+    on_observe: Callable[[models.ObservationEvent], None] | None,
+) -> dict[str, list[str]]:
+    """Helper to perform extraction with concurrency limit.
+
+    Args:
+        chapter: The chapter model.
+        agent: The AI agent.
+        deps: Agent dependencies.
+        categories: Categories to extract.
+        config: Run configuration.
+        semaphore: Concurrency semaphore.
+        on_observe: Optional observation callback.
+
+    Returns:
+        A dictionary mapping categories to lists of extracted entity names.
+    """
+    async with semaphore:
+        prompt = build_extraction_user_prompt(
+            text=chapter.content,
+            categories=categories,
+            narrator=config.narrator_config,
+        )
+        raw = await run_agent_async(
+            agent, prompt, deps=deps, on_observe=on_observe
+        )
+        return raw.to_dict()
+
+
 async def _extract_chapter(
     chapter: models.Chapter,
     agent: Agent[models.AgentDeps, models.ExtractionResult],
@@ -29,52 +90,34 @@ async def _extract_chapter(
     progress: Callable[[models.ProgressUpdate], None] | None = None,
     on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> tuple[int, dict[str, list[str]]]:
-    """Extract entities from a chapter.
-
-    Uses throttling and abstracted storage.
+    """Extract entities from a chapter with throttling and storage.
 
     Args:
-        chapter: The chapter to extract from.
-        agent: The extraction agent.
-        deps: Dependencies for the agent.
-        categories: List of categories to extract.
-        config: The run configuration.
-        idx: The current chapter index.
-        total: The total number of chapters.
-        semaphore: Semaphore for concurrency control.
-        storage: The storage provider for persistence.
-        progress: Optional callback for progress updates.
-        on_observe: Optional callback for rich observation events.
+        chapter: The chapter model.
+        agent: The AI agent.
+        deps: Agent dependencies.
+        categories: Categories to extract.
+        config: Run configuration.
+        idx: Chapter index.
+        total: Total chapters.
+        semaphore: Concurrency semaphore.
+        storage: Storage provider.
+        progress: Optional progress callback.
+        on_observe: Optional observation callback.
 
     Returns:
         A tuple of (chapter_number, extraction_data).
     """
-    if progress:
-        progress(
-            models.ProgressUpdate(
-                stage="extraction",
-                current=idx,
-                total=total,
-                message=f"Extracting chapter {chapter.number}: {chapter.title}",
-            )
-        )
+    _report_extraction_progress(progress, chapter, idx, total)
 
     if storage.extraction_exists(chapter.number):
         logger.info(f"Loading cached extraction for chapter {chapter.number}")
-        result = storage.load_extraction(chapter.number)
-    else:
-        async with semaphore:
-            prompt = build_extraction_user_prompt(
-                text=chapter.content,
-                categories=categories,
-                narrator=config.narrator_config,
-            )
-            raw_result = await run_agent_async(
-                agent, prompt, deps=deps, on_observe=on_observe
-            )
-            result = raw_result.to_dict()
-            storage.save_extraction(chapter.number, result)
+        return chapter.number, storage.load_extraction(chapter.number)
 
+    result = await _perform_extraction(
+        chapter, agent, deps, categories, config, semaphore, on_observe
+    )
+    storage.save_extraction(chapter.number, result)
     return chapter.number, result
 
 
@@ -91,39 +134,49 @@ async def extract_book(
     """Extract entities from all chapters in parallel with throttling.
 
     Args:
-        book: The book to extract from.
-        agent: The extraction agent.
-        deps: Dependencies for the agent.
-        categories: List of categories to extract.
-        config: The run configuration.
-        storage: The storage provider for persistence.
-        progress: Optional callback for progress updates.
-        on_observe: Optional callback for rich observation events.
+        book: The book model.
+        agent: The AI agent.
+        deps: Agent dependencies.
+        categories: Categories to extract.
+        config: Run configuration.
+        storage: Storage provider.
+        progress: Optional progress callback.
+        on_observe: Optional observation callback.
 
     Returns:
-        A dictionary mapping chapter numbers to extraction data.
+        A dictionary mapping chapter numbers to their extraction data.
     """
-    total_chapters = len(book.chapters)
-    logger.info(f"Extracting entities from {total_chapters} chapters")
+    total = len(book.chapters)
+    logger.info(f"Extracting entities from {total} chapters")
+    semaphore = asyncio.Semaphore(deps.settings.max_concurrency)
 
-    semaphore = asyncio.Semaphore(10)
-
-    tasks = [
-        _extract_chapter(
-            chapter,
-            agent,
-            deps,
-            categories,
-            config,
-            idx,
-            total_chapters,
-            semaphore,
-            storage,
-            progress,
-            on_observe,
+    tasks: list[asyncio.Task[tuple[int, dict[str, list[str]]]]] = []
+    for i, chap in enumerate(book.chapters, 1):
+        task = asyncio.create_task(
+            _extract_chapter(
+                chap,
+                agent,
+                deps,
+                categories,
+                config,
+                i,
+                total,
+                semaphore,
+                storage,
+                progress,
+                on_observe,
+            )
         )
-        for idx, chapter in enumerate(book.chapters, 1)
-    ]
+        tasks.append(task)
 
-    results = await asyncio.gather(*tasks)
-    return dict(results)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    extracted: dict[int, dict[str, list[str]]] = {}
+    for r in results:
+        if isinstance(r, Exception):
+            logger.error(f"Extraction task failed: {r}")
+            continue
+        if isinstance(r, tuple):
+            chapter_num, data = r
+            extracted[chapter_num] = data
+
+    return extracted

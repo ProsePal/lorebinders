@@ -1,13 +1,13 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from lorebinders.types import EntityTraits
+from lorebinders.types import EntityTraits as EntityTraits
 
 if TYPE_CHECKING:
     from lorebinders.settings import Settings
@@ -45,7 +45,6 @@ class Chapter(BaseModel):
     number: int
     title: str
     content: str
-    profiles: list["EntityProfile"] = Field(default_factory=list)
 
 
 class Book(BaseModel):
@@ -114,9 +113,7 @@ class Binder(BaseModel):
             The entity record if found, None otherwise.
         """
         cat = self.categories.get(category)
-        if not cat:
-            return None
-        return cat.entities.get(name)
+        return cat.entities.get(name) if cat else None
 
     def add_appearance(
         self,
@@ -135,14 +132,6 @@ class Binder(BaseModel):
 
         ent = cat.entities[name]
         ent.appearances[chapter] = EntityAppearance(traits=traits)
-
-
-class ExtractionConfig(BaseModel):
-    """Configuration for the entity extraction agent."""
-
-    target_categories: list[str]
-    description: str | None = None
-    narrator: NarratorConfig | None = None
 
 
 class CategoryEntities(BaseModel):
@@ -172,15 +161,7 @@ class ExtractionResult(BaseModel):
         return {item.category: item.entities for item in self.results}
 
 
-class AnalysisConfig(BaseModel):
-    """Configuration for the entity analysis agent."""
-
-    target_entity: str
-    category: str
-    traits: list[str]
-
-
-class TraitValue(BaseModel):
+class AnalyzedTrait(BaseModel):
     """A single analyzed trait for an entity."""
 
     trait: str
@@ -193,15 +174,7 @@ class AnalysisResult(BaseModel):
 
     entity_name: str
     category: str
-    traits: list[TraitValue]
-
-
-class SummarizerConfig(BaseModel):
-    """Configuration for the entity summarization agent."""
-
-    entity_name: str
-    category: str
-    context_data: str
+    traits: list[AnalyzedTrait]
 
 
 class SummarizerResult(BaseModel):
@@ -220,7 +193,7 @@ class ProgressUpdate(BaseModel):
     message: str
 
 
-class ObservationType(str, Enum):
+class ObservationType(StrEnum):
     """Types of observation events."""
 
     STAGE_STARTED = "stage_started"
@@ -238,4 +211,6 @@ class ObservationEvent(BaseModel):
     stage: str
     message: str
     timestamp: datetime = Field(default_factory=datetime.now)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, str | int | float | bool | None] = Field(
+        default_factory=dict
+    )

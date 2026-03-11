@@ -2,7 +2,7 @@
 name = "lorebinders"
 version = "0.3.0"
 description = "Create a story bible with AI from a finished manuscript"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [{ name = "Ashlynn Antrobus", email = "ashlynn@prosepal.io" }]
@@ -51,8 +51,12 @@ db = [
 ]
 
 [dependency-groups]
-dev = ["pre-commit>=4.2.0", { include-group = "testing" }]
-lint = ["mypy>=1.19.0", "ruff>=0.14.0"]
+dev = ["pre-commit>=4.2.0", { include-group = "testing" }, { include-group = "lint" }]
+lint = [
+    "mypy>=1.19.0",
+    "ruff>=0.14.0",
+    "types-reportlab>=1.2.0"
+]
 testing = [
     "pypdf>=6.6.0",
     "pytest-cov>=7.0.0",
@@ -60,17 +64,26 @@ testing = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
+requires = ["uv_build>=0.9.18,<0.11.0"]
 build-backend = "uv_build"
 
 [tool.mypy]
+disable_error_code = ["attr-defined"]
 files = ["src/lorebinders/**/*.py"]
-ignore_missing_imports = true
-python_version = "3.10"
+python_version = "3.11"
+strict = true
+plugins = [
+    "pydantic.mypy",
+    "sqlalchemy.ext.mypy.plugin"
+]
 
 [[tool.mypy.overrides]]
 module = "tests.unit.test_models"
 disable_error_code = ["call-arg", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "ebook2text.*"
+ignore_missing_imports = true
 
 [tool.ruff]
 exclude = [
@@ -85,6 +98,7 @@ exclude = [
 ]
 force-exclude = true
 line-length = 80
+target-version = "py311"
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -121,11 +135,7 @@ testpaths = ["tests"]
 markers = ["external: mark a test as requiring external an external dependency"]
 
 [tool.coverage.run]
-omit = [
-    "*/_types.py",
-    "lorebinders/_exceptions.py",
-    "lorebinders/_type_annotations.py",
-]
+omit = ["types.py", "logging.py", "reporting/styles.py"]
 
 [tool.coverage.report]
 exclude_also = [

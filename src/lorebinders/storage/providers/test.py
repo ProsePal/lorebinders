@@ -9,32 +9,36 @@ class TestStorageProvider:
     """In-memory storage provider for testing purposes."""
 
     def set_workspace(self, author: str, title: str) -> None:
-        """Create a workspace for testing."""
-        self._path = Path(f"/mock/{author}/{title}")
+        """Set the workspace directories.
+
+        Args:
+            author: The name of the author.
+            title: The title of the book.
+        """
+        self.author = author
+        self.title = title
         self.extractions: dict[int, dict[str, list[str]]] = {}
         self.profiles: dict[tuple[int, str, str], models.EntityProfile] = {}
         self.summaries: dict[tuple[str, str], str] = {}
-        self.book_text: str | None = None
+        self.book_text = ""
 
     @property
     def path(self) -> Path:
         """The base path of the workspace.
 
-        Raises:
-            RuntimeError: If the workspace is not set.
+        Returns:
+            The Path to the workspace directory.
         """
-        if not self._path:
-            raise RuntimeError("Workspace not set")
-        return self._path
+        return Path("/tmp/lorebinders_test")
 
     def extraction_exists(self, chapter_num: int) -> bool:
         """Check if extraction exists.
 
         Args:
-            chapter_num (int): The chapter number of the extraction.
+            chapter_num: The chapter number.
 
         Returns:
-            bool: True if the extraction exists, False otherwise.
+            True if extraction data exists for the chapter.
         """
         return chapter_num in self.extractions
 
@@ -46,8 +50,8 @@ class TestStorageProvider:
         """Save extraction data.
 
         Args:
-            chapter_num (int): The chapter number of the extraction.
-            data (dict[str, list[str]]): The extraction data.
+            chapter_num: The chapter number.
+            data: The extraction data.
         """
         self.extractions[chapter_num] = data
 
@@ -58,15 +62,8 @@ class TestStorageProvider:
             chapter_num (int): The chapter number of the extraction.
 
         Returns:
-            dict[str, list[str]]: The extraction data.
-
-        Raises:
-            FileNotFoundError: If the extraction does not exist.
+            The extraction data dictionary.
         """
-        if chapter_num not in self.extractions:
-            raise FileNotFoundError(
-                f"Extraction for chapter {chapter_num} not found"
-            )
         return self.extractions[chapter_num]
 
     def profile_exists(
@@ -75,22 +72,49 @@ class TestStorageProvider:
         """Check if profile exists.
 
         Args:
-            chapter_num (int): The chapter number of the profile.
-            category (str): The category of the profile.
-            name (str): The name of the profile.
+            chapter_num: The chapter number.
+            category: The entity category.
+            name: The entity name.
 
         Returns:
-            bool: True if the profile exists, False otherwise.
+            True if the profile exists.
         """
         return (chapter_num, category, name) in self.profiles
+
+    def filter_cached_profiles(
+        self, chapter_num: int, category: str, names: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """Split names into those that are cached and those that are not.
+
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            names: List of entity names to check.
+
+        Returns:
+            A tuple of (cached_names, missing_names).
+        """
+        cached, missing = [], []
+        for n in names:
+            if self.profile_exists(chapter_num, category, n):
+                cached.append(n)
+            else:
+                missing.append(n)
+        return cached, missing
 
     def save_profile(
         self,
         chapter_num: int,
         profile: models.EntityProfile,
     ) -> None:
-        """Save profile data."""
-        self.profiles[(chapter_num, profile.category, profile.name)] = profile
+        """Save profile data.
+
+        Args:
+            chapter_num (int): The chapter number of the profile.
+            profile (models.EntityProfile): The profile data.
+        """
+        key = (chapter_num, profile.category, profile.name)
+        self.profiles[key] = profile
 
     def load_profile(
         self, chapter_num: int, category: str, name: str
@@ -103,14 +127,9 @@ class TestStorageProvider:
             name (str): The name of the profile.
 
         Returns:
-            models.EntityProfile: The profile data.
-
-        Raises:
-            FileNotFoundError: If the profile does not exist.
+            The loaded entity profile.
         """
         key = (chapter_num, category, name)
-        if key not in self.profiles:
-            raise FileNotFoundError(f"Profile {name} not found")
         return self.profiles[key]
 
     def summary_exists(self, category: str, name: str) -> bool:
@@ -126,7 +145,13 @@ class TestStorageProvider:
         return (category, name) in self.summaries
 
     def save_summary(self, category: str, name: str, summary: str) -> None:
-        """Save summary data."""
+        """Save summary data.
+
+        Args:
+            category (str): The category of the summary.
+            name (str): The name of the summary.
+            summary (str): The summary data.
+        """
         self.summaries[(category, name)] = summary
 
     def load_summary(self, category: str, name: str) -> str:
@@ -137,10 +162,10 @@ class TestStorageProvider:
             name (str): The name of the summary.
 
         Returns:
-            str: The summary data.
+            The summary text.
 
         Raises:
-            FileNotFoundError: If the summary does not exist.
+            FileNotFoundError: If the summary is missing.
         """
         key = (category, name)
         if key not in self.summaries:
@@ -148,5 +173,10 @@ class TestStorageProvider:
         return self.summaries[key]
 
     def save_book(self, title: str, text: str) -> None:
-        """Save the book text."""
+        """Save the book text.
+
+        Args:
+            title: The book title.
+            text: The full text content.
+        """
         self.book_text = text

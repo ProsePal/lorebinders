@@ -1,8 +1,12 @@
 """Text normalization utilities shared across refinement modules."""
 
 import re
+from functools import lru_cache
 
+from lorebinders.refinement.patterns import LOCATION_SUFFIX_PATTERN
 from lorebinders.types import EntityTraits, TraitValue
+
+MAX_ENTITY_NAME_LENGTH = 200
 
 TITLES: frozenset[str] = frozenset(
     {
@@ -89,7 +93,27 @@ TITLES: frozenset[str] = frozenset(
     }
 )
 
+_SINGULAR_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?i)(.*)(lves)$"), r"\1lf"),
+    (re.compile(r"(?i)(.*)(eaves)$"), r"\1eaf"),
+    (re.compile(r"(?i)(.*)(oaves)$"), r"\1oaf"),
+    (re.compile(r"(?i)(.*)(ives)$"), r"\1ife"),
+    (re.compile(r"(?i)(.*)(ves)$"), r"\1f"),
+    (re.compile(r"(?i)(.*)(ies)$"), r"\1y"),
+    (re.compile(r"(?i)(.*)(i)$"), r"\1us"),
+    (re.compile(r"(?i)(.*)(a)$"), r"\1um"),
+    (re.compile(r"(?i)(.*)(oes)$"), r"\1o"),
+    (re.compile(r"(?i)(.*)(sses)$"), r"\1ss"),
+    (re.compile(r"(?i)(.*)(ses)$"), r"\1s"),
+    (re.compile(r"(?i)(.*)(xes)$"), r"\1x"),
+    (re.compile(r"(?i)(.*)(zes)$"), r"\1ze"),
+    (re.compile(r"(?i)(.*)(ches)$"), r"\1ch"),
+    (re.compile(r"(?i)(.*)(shes)$"), r"\1sh"),
+    (re.compile(r"(?i)(.*)(s)$"), r"\1"),
+]
 
+
+@lru_cache(maxsize=1024)
 def remove_titles(name: str) -> str:
     """Remove titles from a name.
 
@@ -108,6 +132,43 @@ def remove_titles(name: str) -> str:
     return name
 
 
+def standardize_location(name: str) -> str:
+    """Remove suffixes like (Interior) or - Night from location names.
+
+    Args:
+        name: The raw location name.
+
+    Returns:
+        The standardized location name.
+    """
+    return LOCATION_SUFFIX_PATTERN.sub("", name).strip()
+
+
+def clean_entity_name(name: str, category: str) -> str:
+    """Clean an entity name based on its category.
+
+    Args:
+        name: The raw entity name.
+        category: The entity category (e.g. 'Characters', 'Locations').
+
+    Returns:
+        The cleaned entity name.
+
+    Raises:
+        ValueError: If the name exceeds MAX_ENTITY_NAME_LENGTH.
+    """
+    if len(name) > MAX_ENTITY_NAME_LENGTH:
+        raise ValueError(f"Entity name exceeds max length: {len(name)}")
+
+    cleaned = remove_titles(name.strip())
+
+    if category.lower() == "locations":
+        cleaned = standardize_location(cleaned)
+
+    return cleaned
+
+
+@lru_cache(maxsize=1024)
 def to_singular(plural: str) -> str:
     """Convert a plural word to its singular form.
 
@@ -120,27 +181,8 @@ def to_singular(plural: str) -> str:
     if not plural:
         return ""
 
-    patterns = [
-        (r"(?i)(.*)(lves)$", r"\1lf"),
-        (r"(?i)(.*)(eaves)$", r"\1eaf"),
-        (r"(?i)(.*)(oaves)$", r"\1oaf"),
-        (r"(?i)(.*)(ives)$", r"\1ife"),
-        (r"(?i)(.*)(ves)$", r"\1f"),
-        (r"(?i)(.*)(ies)$", r"\1y"),
-        (r"(?i)(.*)(i)$", r"\1us"),
-        (r"(?i)(.*)(a)$", r"\1um"),
-        (r"(?i)(.*)(oes)$", r"\1o"),
-        (r"(?i)(.*)(sses)$", r"\1ss"),
-        (r"(?i)(.*)(ses)$", r"\1s"),
-        (r"(?i)(.*)(xes)$", r"\1x"),
-        (r"(?i)(.*)(zes)$", r"\1ze"),
-        (r"(?i)(.*)(ches)$", r"\1ch"),
-        (r"(?i)(.*)(shes)$", r"\1sh"),
-        (r"(?i)(.*)(s)$", r"\1"),
-    ]
-
-    for pattern, replacement in patterns:
-        singular, n = re.subn(pattern, replacement, plural)
+    for pattern, replacement in _SINGULAR_PATTERNS:
+        singular, n = pattern.subn(replacement, plural)
         if n > 0:
             return singular
 
@@ -177,8 +219,5 @@ def merge_values(v1: EntityTraits, v2: EntityTraits) -> EntityTraits:
         The merged trait dictionary.
     """
     for k, v in v2.items():
-        if k in v1:
-            v1[k] = _merge_trait_values(v1[k], v)
-        else:
-            v1[k] = v
+        v1[k] = _merge_trait_values(v1[k], v) if k in v1 else v
     return v1

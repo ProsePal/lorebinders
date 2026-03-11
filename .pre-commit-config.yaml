@@ -45,8 +45,13 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.1
+    rev: v1.19.1
     hooks:
       - id: mypy
         additional_dependencies:
           - pydantic
+          - pydantic-settings
+          - pydantic-ai
+          - pytest
+          - sqlalchemy
+          - typer

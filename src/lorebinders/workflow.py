@@ -1,19 +1,24 @@
+"""Core orchestration pipeline for LoreBinders."""
+
+import asyncio
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from typing import TypeAlias
 
 from pydantic_ai import Agent
 
 from lorebinders import models
-from lorebinders.agent import (
+from lorebinders.agent.analysis import analyze_entities
+from lorebinders.agent.extraction import extract_book
+from lorebinders.agent.factory import (
     create_analysis_agent,
     create_extraction_agent,
     create_summarization_agent,
     load_prompt_from_assets,
 )
-from lorebinders.agent.analysis import analyze_entities
-from lorebinders.agent.extraction import extract_book
 from lorebinders.agent.summarization import summarize_binder
+from lorebinders.refinement import refine_binder
 from lorebinders.refinement.cleaning import clean_traits
 from lorebinders.refinement.conversion import convert_to_text, ingest
 from lorebinders.refinement.sorting import sort_extractions
@@ -29,39 +34,57 @@ from lorebinders.storage.workspace import ensure_workspace
 
 logger = logging.getLogger(__name__)
 
+_ExtAgent: TypeAlias = Agent[models.AgentDeps, models.ExtractionResult]
+_AnaAgent: TypeAlias = Agent[models.AgentDeps, list[models.AnalysisResult]]
+_SumAgent: TypeAlias = Agent[models.AgentDeps, models.SummarizerResult]
+
+
+def _add_custom_traits(
+    category: str, traits: list[str], effective: dict[str, list[str]]
+) -> None:
+    """Helper to add custom traits to category.
+
+    Args:
+        category: The category name.
+        traits: List of trait names.
+        effective: Dictionary to update.
+    """
+    if category not in effective:
+        effective[category] = []
+
+    current_set = set(effective[category])
+    for trait in traits:
+        if trait in current_set:
+            continue
+        effective[category].append(trait)
+        current_set.add(trait)
+
 
 def merge_traits(
     settings: Settings, config: models.RunConfiguration
 ) -> dict[str, list[str]]:
-    """Merge default settings with run configuration to get effective traits.
+    """Merge default settings with run configuration effective traits.
 
     Args:
-        settings: Application settings with defaults.
-        config: Run configuration with overrides/extensions.
+        settings: Application settings.
+        config: Run configuration.
 
     Returns:
-        A dictionary mapping category names to their list of traits.
+        A dictionary mapping category names to lists of trait names.
     """
-    effective_traits: dict[str, list[str]] = {
+    effective: dict[str, list[str]] = {
         "Characters": settings.character_traits.copy(),
         "Locations": settings.location_traits.copy(),
     }
 
-    for category, traits in config.custom_traits.items():
-        if category not in effective_traits:
-            effective_traits[category] = []
+    for cat, traits in config.custom_traits.items():
+        _add_custom_traits(cat, traits, effective)
 
-        current_set = set(effective_traits[category])
-        for trait in traits:
-            if trait not in current_set:
-                effective_traits[category].append(trait)
-                current_set.add(trait)
+    for cat in config.custom_categories:
+        if cat not in effective:
+            effective[cat] = []
 
-    for category in config.custom_categories:
-        if category not in effective_traits:
-            effective_traits[category] = []
-
-    return effective_traits
+    return effective
 
 
 def _aggregate_to_binder(
@@ -70,10 +93,10 @@ def _aggregate_to_binder(
     """Aggregate profiles into the Binder model, cleaning traits.
 
     Args:
-        profiles: The list of entity profiles to aggregate.
+        profiles: List of analyzed entity profiles.
 
     Returns:
-        A Binder model containing all aggregated entities.
+        A Binder model containing aggregated and cleaned entity profiles.
     """
     binder = models.Binder()
     for p in profiles:
@@ -87,31 +110,54 @@ def _aggregate_to_binder(
     return binder
 
 
+def _emit_stage_start(
+    on_observe: Callable[[models.ObservationEvent], None] | None,
+    stage: str,
+    message: str,
+    metadata: dict[str, str | int | float | bool | None] | None = None,
+) -> None:
+    """Helper for stage start events.
+
+    Args:
+        on_observe: Optional observation callback.
+        stage: Stage name.
+        message: Event message.
+        metadata: Optional event metadata.
+    """
+    if not on_observe:
+        return
+    on_observe(
+        models.ObservationEvent(
+            type=models.ObservationType.STAGE_STARTED,
+            stage=stage,
+            message=message,
+            metadata=metadata or {},
+        )
+    )
+
+
 async def build_binder(
     config: models.RunConfiguration,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
     on_observe: Callable[[models.ObservationEvent], None] | None = None,
-    extraction_agent: Agent[models.AgentDeps, models.ExtractionResult]
-    | None = None,
-    analysis_agent: Agent[models.AgentDeps, list[models.AnalysisResult]]
-    | None = None,
-    summarization_agent: Agent[models.AgentDeps, models.SummarizerResult]
-    | None = None,
+    extraction_agent: _ExtAgent | None = None,
+    analysis_agent: _AnaAgent | None = None,
+    summarization_agent: _SumAgent | None = None,
     provider: type[StorageProvider] = FilesystemStorage,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
 
     Args:
         config: The run configuration.
-        progress: Optional callback for progress updates.
-        on_observe: Optional callback for rich observation events.
-        extraction_agent: Optional agent for extraction.
-        analysis_agent: Optional agent for analysis.
-        summarization_agent: Optional agent for summarization.
-        provider: Optional storage provider class.
+        progress: Optional progress callback.
+        on_observe: Optional observation callback.
+        extraction_agent: Optional agent override.
+        analysis_agent: Optional agent override.
+        summarization_agent: Optional agent override.
+        provider: Storage provider class.
 
     Returns:
-        Path: The path to the generated PDF.
+        The Path to the generated story bible report.
     """
     settings = get_settings()
     deps = models.AgentDeps(
@@ -122,132 +168,79 @@ async def build_binder(
     ana_agent = analysis_agent or create_analysis_agent(settings)
     sum_agent = summarization_agent or create_summarization_agent(settings)
 
-    effective_traits = merge_traits(settings, config)
-    all_categories = list(effective_traits.keys())
-
+    traits = merge_traits(settings, config)
     storage = get_storage(provider)
-
-    logger.info(
-        f"Starting binder build for {config.book_title} by {config.author_name}"
-    )
     storage.set_workspace(config.author_name, config.book_title)
 
-    if on_observe:
-        on_observe(
-            models.ObservationEvent(
-                type=models.ObservationType.STAGE_STARTED,
-                stage="ingestion",
-                message=f"Ingesting {config.book_path.name}",
-            )
-        )
+    _emit_stage_start(
+        on_observe, "ingestion", f"Ingesting {config.book_path.name}"
+    )
+    text = await asyncio.to_thread(convert_to_text, config.book_path)
+    await asyncio.to_thread(storage.save_book, config.book_title, text)
+    book = ingest(text, config.book_path.stem)
 
-    logger.debug("Ingesting book...")
-    book_text = convert_to_text(config.book_path)
-    storage.save_book(config.book_title, book_text)
-    book = ingest(book_text, config.book_path.stem)
-
-    if on_observe:
-        on_observe(
-            models.ObservationEvent(
-                type=models.ObservationType.STAGE_STARTED,
-                stage="extraction",
-                message="Starting entity extraction",
-                metadata={"total_chapters": len(book.chapters)},
-            )
-        )
-
-    logger.debug("Starting extraction phase...")
-    raw_extractions = await extract_book(
+    _emit_stage_start(
+        on_observe,
+        "extraction",
+        "Starting extraction",
+        {"total_chapters": len(book.chapters)},
+    )
+    raw = await extract_book(
         book,
         ext_agent,
         deps,
-        all_categories,
+        list(traits.keys()),
         config,
         storage,
         progress,
         on_observe,
     )
 
-    logger.debug("Starting early refinement...")
-    narrator_name = (
-        config.narrator_config.name if config.narrator_config else None
+    narrator = config.narrator_config.name
+    sorted_ext = sort_extractions(raw, narrator)
+
+    _emit_stage_start(
+        on_observe,
+        "analysis",
+        "Starting analysis",
+        {"total_batches": sum(len(e) for e in sorted_ext.values())}
+        if on_observe
+        else None,
     )
-    sorted_extractions = sort_extractions(raw_extractions, narrator_name)
-
-    if on_observe:
-        total_batches = sum(
-            len(entities) for entities in sorted_extractions.values()
-        )
-        on_observe(
-            models.ObservationEvent(
-                type=models.ObservationType.STAGE_STARTED,
-                stage="analysis",
-                message="Starting entity analysis",
-                metadata={"total_batches": total_batches},
-            )
-        )
-
-    logger.debug("Starting analysis phase...")
     profiles = await analyze_entities(
-        sorted_extractions,
-        book,
-        ana_agent,
-        deps,
-        effective_traits,
-        storage,
-        progress=progress,
-        on_observe=on_observe,
+        sorted_ext, book, ana_agent, deps, traits, storage, progress, on_observe
     )
 
-    logger.debug("Aggregating profiles and cleaning traits...")
-    binder = _aggregate_to_binder(profiles)
+    _emit_stage_start(on_observe, "refinement", "Refining binder data")
+    raw_binder = _aggregate_to_binder(profiles)
+    binder = refine_binder(raw_binder, config.narrator_config.name)
 
-    if on_observe:
-        total_entities = sum(
-            len(c.entities) for c in binder.categories.values()
-        )
-        on_observe(
-            models.ObservationEvent(
-                type=models.ObservationType.STAGE_STARTED,
-                stage="summarization",
-                message="Starting entity summarization",
-                metadata={"total_entities": total_entities},
-            )
-        )
-
-    logger.debug("Starting summarization phase...")
+    total_ent = sum(len(c.entities) for c in binder.categories.values())
+    _emit_stage_start(
+        on_observe,
+        "summarization",
+        "Starting summarization",
+        {"total_entities": total_ent},
+    )
     await summarize_binder(
-        binder,
-        storage,
-        sum_agent,
-        deps,
-        progress=progress,
-        on_observe=on_observe,
+        binder, storage, sum_agent, deps, progress, on_observe
     )
 
     safe_title = sanitize_filename(config.book_title)
     output_dir = ensure_workspace(config.author_name, config.book_title)
     output_file = output_dir / f"{safe_title}_story_bible.pdf"
 
-    if on_observe:
-        on_observe(
-            models.ObservationEvent(
-                type=models.ObservationType.STAGE_STARTED,
-                stage="reporting",
-                message=f"Generating PDF report to {output_file.name}",
-            )
-        )
-
-    logger.debug(f"Generating report to {output_file}...")
-    generate_pdf_report(binder, output_file)
-    logger.debug("Report generation complete.")
+    _emit_stage_start(
+        on_observe, "reporting", f"Generating PDF to {output_file.name}"
+    )
+    await asyncio.to_thread(generate_pdf_report, binder, output_file)
 
     if on_observe:
         on_observe(
             models.ObservationEvent(
                 type=models.ObservationType.STAGE_COMPLETED,
                 stage="workflow",
-                message="Binder build complete!",
+                message="Build complete!",
                 metadata={"output_file": str(output_file)},
             )
         )

@@ -14,10 +14,10 @@ from lorebinders.agent import (
 from lorebinders.cli.configuration import build_run_configuration
 from lorebinders.models import (
     AnalysisResult,
+    AnalyzedTrait,
     CategoryEntities,
     ExtractionResult,
     SummarizerResult,
-    TraitValue,
 )
 
 runner = CliRunner()
@@ -76,7 +76,7 @@ def test_e2e_ingestion_flow(
                 entity_name="Night",
                 category="Locations",
                 traits=[
-                    TraitValue(
+                    AnalyzedTrait(
                         trait="Key Features", value="Dark", evidence="..."
                     )
                 ],

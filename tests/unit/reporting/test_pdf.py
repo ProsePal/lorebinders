@@ -6,7 +6,7 @@ from lorebinders.models import Binder
 from lorebinders.reporting.pdf import generate_pdf_report
 
 
-def test_generate_pdf_report_aggregated(tmp_path: Path):
+def test_generate_pdf_report_aggregated(tmp_path: Path) -> None:
     output_path = tmp_path / "test_report.pdf"
 
     binder = Binder()

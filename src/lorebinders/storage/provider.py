@@ -8,21 +8,28 @@ class StorageProvider(Protocol):
     """Protocol for LoreBinders storage backends."""
 
     def set_workspace(self, author: str, title: str) -> None:
-        """Set the active workspace for this storage provider.
+        """Set the workspace context.
 
         Args:
-            author: The author name.
-            title: The book title.
+            author: The name of the book author.
+            title: The title of the book.
         """
         ...
 
     @property
     def path(self) -> Path:
-        """The base path of the workspace."""
+        """The base path of the workspace.
+
+        Returns:
+            The Path to the workspace directory.
+        """
         ...
 
     def extraction_exists(self, chapter_num: int) -> bool:
         """Check if extraction exists.
+
+        Args:
+            chapter_num: The chapter number.
 
         Returns:
             True if it exists.
@@ -34,14 +41,22 @@ class StorageProvider(Protocol):
         chapter_num: int,
         data: dict[str, list[str]],
     ) -> None:
-        """Save extraction data."""
+        """Save extraction data.
+
+        Args:
+            chapter_num: The chapter number.
+            data: The extraction data dictionary.
+        """
         ...
 
     def load_extraction(self, chapter_num: int) -> dict[str, list[str]]:
         """Load extraction data.
 
+        Args:
+            chapter_num (int): The chapter number of the extraction.
+
         Returns:
-            The extraction data.
+            The extraction data dictionary.
         """
         ...
 
@@ -50,8 +65,28 @@ class StorageProvider(Protocol):
     ) -> bool:
         """Check if profile exists.
 
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            name: The entity name.
+
         Returns:
             True if it exists.
+        """
+        ...
+
+    def filter_cached_profiles(
+        self, chapter_num: int, category: str, names: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """Split names into those that are cached and those that are not.
+
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            names: List of entity names to check.
+
+        Returns:
+            A tuple of (cached_names, missing_names).
         """
         ...
 
@@ -60,7 +95,12 @@ class StorageProvider(Protocol):
         chapter_num: int,
         profile: models.EntityProfile,
     ) -> None:
-        """Save profile data."""
+        """Save profile data.
+
+        Args:
+            chapter_num: The chapter number.
+            profile: The entity profile model.
+        """
         ...
 
     def load_profile(
@@ -68,13 +108,22 @@ class StorageProvider(Protocol):
     ) -> models.EntityProfile:
         """Load profile data.
 
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            name: The entity name.
+
         Returns:
-            The entity profile.
+            The entity profile model.
         """
         ...
 
     def summary_exists(self, category: str, name: str) -> bool:
         """Check if summary exists.
+
+        Args:
+            category: The entity category.
+            name: The entity name.
 
         Returns:
             True if it exists.
@@ -82,11 +131,21 @@ class StorageProvider(Protocol):
         ...
 
     def save_summary(self, category: str, name: str, summary: str) -> None:
-        """Save summary data."""
+        """Save summary data.
+
+        Args:
+            category: The entity category.
+            name: The entity name.
+            summary: The generated summary text.
+        """
         ...
 
     def load_summary(self, category: str, name: str) -> str:
         """Load summary data.
+
+        Args:
+            category: The entity category.
+            name: The entity name.
 
         Returns:
             The summary text.
@@ -94,5 +153,10 @@ class StorageProvider(Protocol):
         ...
 
     def save_book(self, title: str, text: str) -> None:
-        """Save the book text."""
+        """Save the book text.
+
+        Args:
+            title: The book title.
+            text: The full text content.
+        """
         ...

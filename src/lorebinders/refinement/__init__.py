@@ -26,3 +26,6 @@ def refine_binder(binder: Binder, narrator_name: str | None = None) -> Binder:
 
     logger.info("Starting resolution phase")
     return resolve_binder(cleaned_binder)
+
+
+__all__ = ["refine_binder"]

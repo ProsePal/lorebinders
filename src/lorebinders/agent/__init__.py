@@ -8,7 +8,6 @@ from lorebinders.agent.factory import (
     create_extraction_agent,
     create_summarization_agent,
     load_prompt_from_assets,
-    run_agent,
 )
 from lorebinders.agent.summarization import summarize_binder
 
@@ -20,6 +19,5 @@ __all__ = [
     "create_extraction_agent",
     "create_summarization_agent",
     "load_prompt_from_assets",
-    "run_agent",
     "summarize_binder",
 ]

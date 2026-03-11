@@ -1,8 +1,8 @@
 import pytest
 
+from lorebinders.refinement.deduplication import is_similar_key
 from lorebinders.refinement.sorting import (
     _deduplicate_entity_names,
-    is_similar_key,
     sort_extractions,
 )
 

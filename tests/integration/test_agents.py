@@ -1,14 +1,15 @@
 import json
 
+import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
-from lorebinders.agent import (
+from lorebinders.agent.factory import (
     build_analysis_user_prompt,
     build_extraction_user_prompt,
     create_analysis_agent,
     create_extraction_agent,
-    run_agent,
+    run_agent_async,
 )
 from lorebinders.models import AgentDeps, CategoryTarget, NarratorConfig
 from lorebinders.settings import Settings
@@ -18,7 +19,8 @@ def mock_prompt_loader(filename: str) -> str:
     return f"Mock content for {filename}"
 
 
-def test_agents_flow() -> None:
+@pytest.mark.anyio
+async def test_agents_flow() -> None:
     def mock_extract_call(
         messages: list[ModelMessage], info: object
     ) -> ModelResponse:
@@ -83,7 +85,9 @@ def test_agents_flow() -> None:
             narrator=NarratorConfig(is_1st_person=False),
         )
 
-        result = run_agent(extraction_agent, extraction_prompt, deps)
+        result = await run_agent_async(
+            extraction_agent, extraction_prompt, deps
+        )
         entities = result.to_dict()
 
         assert "Characters" in entities
@@ -101,7 +105,7 @@ def test_agents_flow() -> None:
             ],
         )
 
-        results = run_agent(analysis_agent, analysis_prompt, deps)
+        results = await run_agent_async(analysis_agent, analysis_prompt, deps)
 
         assert len(results) == 1
         assert results[0].entity_name == "Sherlock Holmes"

@@ -30,14 +30,12 @@ def test_init_uses_settings_db_url() -> None:
         s.engine.dispose()
 
 
-def test_get_session_yields_and_closes() -> None:
+def test_get_session_provides_session() -> None:
     """_get_session provides a session and closes it on exit."""
     s = DBStorage("sqlite:///:memory:")
-    gen = s._get_session()
-    session = next(gen)
+    session = s._get_session()
     assert session is not None
-    with pytest.raises(StopIteration):
-        next(gen)
+    session.close()
     s.engine.dispose()
 
 
@@ -160,7 +158,7 @@ def test_save_book_creates_record(storage: DBStorage) -> None:
     with storage.SessionLocal() as session:
         row = session.scalars(
             select(BookModel).where(
-                BookModel.workspace_id == storage.workspace_id
+                BookModel.workspace_id == storage._workspace_id
             )
         ).first()
     assert row is not None
@@ -176,7 +174,7 @@ def test_save_book_updates_existing(storage: DBStorage) -> None:
     with storage.SessionLocal() as session:
         rows = session.scalars(
             select(BookModel).where(
-                BookModel.workspace_id == storage.workspace_id
+                BookModel.workspace_id == storage._workspace_id
             )
         ).all()
 

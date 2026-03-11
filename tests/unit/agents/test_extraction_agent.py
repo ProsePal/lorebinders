@@ -1,16 +1,18 @@
+import pytest
 from pydantic_ai.models.fallback import FallbackModel
 
-from lorebinders.agent import (
+from lorebinders.agent.factory import (
     build_extraction_user_prompt,
     create_extraction_agent,
-    run_agent,
+    run_agent_async,
 )
 from lorebinders.models import AgentDeps, NarratorConfig
 from lorebinders.settings import Settings
 from tests.utils import create_mock_model, get_system_prompt
 
 
-def test_extraction_agent_run_sync_and_prompt() -> None:
+@pytest.mark.anyio
+async def test_extraction_agent_run_async_and_prompt() -> None:
     mock_model, captured_messages = create_mock_model(
         {
             "results": [
@@ -32,7 +34,7 @@ def test_extraction_agent_run_sync_and_prompt() -> None:
             narrator=NarratorConfig(is_1st_person=False),
         )
 
-        result = run_agent(agent, prompt, deps)
+        result = await run_agent_async(agent, prompt, deps)
 
         assert result.to_dict() == {"Characters": ["Hero", "Villain"]}
 

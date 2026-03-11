@@ -1,7 +1,7 @@
 """SQLAlchemy storage backend for LoreBinders."""
 
-from collections.abc import Generator
 from pathlib import Path
+from typing import TypeVar
 
 from sqlalchemy import JSON, String, create_engine, select
 from sqlalchemy.orm import (
@@ -11,6 +11,7 @@ from sqlalchemy.orm import (
     mapped_column,
     sessionmaker,
 )
+from sqlalchemy.sql.selectable import Select
 
 import lorebinders.storage.workspace as workspace
 from lorebinders import models
@@ -20,6 +21,9 @@ from lorebinders.types import EntityTraits
 
 class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
+
+
+BaseT = TypeVar("BaseT", bound=Base)
 
 
 class BookModel(Base):
@@ -78,8 +82,7 @@ class DBStorage:
         """Initialize the database storage.
 
         Args:
-            db_url: The SQLAlchemy database URL. Defaults to in-memory SQLite.
-                Overrides the DB_URL environment variable.
+            db_url: Optional SQLAlchemy connection string.
         """
         if not db_url:
             db_url = get_settings().db_url
@@ -89,24 +92,46 @@ class DBStorage:
             autocommit=False, autoflush=False, bind=self.engine
         )
         self._path: Path | None = None
-        self.workspace_id: str | None = None
+        self._workspace_id: str | None = None
 
-    def _get_session(self) -> Generator[Session, None, None]:
-        session = self.SessionLocal()
-        try:
-            yield session
-        finally:
-            session.close()
+    def _get_session(self) -> Session:
+        """Create and return a new database session.
+
+        Returns:
+            A new SQLAlchemy Session instance.
+        """
+        return self.SessionLocal()
+
+    def _require_workspace_id(self) -> str:
+        """Return workspace_id or raise if set_workspace was not called.
+
+        Returns:
+            The current workspace identifier.
+
+        Raises:
+            RuntimeError: If the workspace is not set.
+        """
+        if self._workspace_id is None:
+            raise RuntimeError("Workspace not set. Call set_workspace() first.")
+        return self._workspace_id
 
     def set_workspace(self, author: str, title: str) -> None:
-        """Set the workspace context."""
+        """Set the workspace context.
+
+        Args:
+            author: The name of the author.
+            title: The title of the book.
+        """
         path = workspace.ensure_workspace(author, title)
         self._path = path
-        self.workspace_id = str(path)
+        self._workspace_id = str(path)
 
     @property
     def path(self) -> Path:
         """The base path of the workspace.
+
+        Returns:
+            The Path to the workspace directory.
 
         Raises:
             RuntimeError: If the workspace is not set.
@@ -115,209 +140,408 @@ class DBStorage:
             raise RuntimeError("Workspace not set")
         return self._path
 
+    def _get_model(
+        self,
+        session: Session,
+        stmt: Select[tuple[BaseT]],
+        model_class: type[BaseT],
+    ) -> BaseT | None:
+        if result := session.scalars(stmt).first():
+            if not isinstance(result, model_class):
+                raise TypeError(
+                    f"Expected {model_class.__name__}, got {type(result)}"
+                )
+            return result
+        return None
+
+    def _find_extraction(
+        self, session: Session, chapter_num: int
+    ) -> ExtractionModel | None:
+        """Query for an extraction by chapter number.
+
+        Args:
+            session: SQLAlchemy session.
+            chapter_num: The chapter number.
+
+        Returns:
+            The extraction model if found, None otherwise.
+        """
+        stmt = select(ExtractionModel).where(
+            ExtractionModel.workspace_id == self._require_workspace_id(),
+            ExtractionModel.chapter_num == chapter_num,
+        )
+        return self._get_model(session, stmt, ExtractionModel)
+
     def extraction_exists(self, chapter_num: int) -> bool:
         """Check if extraction exists.
 
+        Args:
+            chapter_num: The chapter number.
+
         Returns:
-            True if it exists.
+            True if extraction data exists for the chapter.
         """
-        with self.SessionLocal() as session:
-            stmt = select(ExtractionModel).where(
-                ExtractionModel.workspace_id == self.workspace_id,
-                ExtractionModel.chapter_num == chapter_num,
-            )
-            return session.scalars(stmt).first() is not None
+        session = self._get_session()
+        try:
+            return self._find_extraction(session, chapter_num) is not None
+        finally:
+            session.close()
 
     def save_extraction(
+        self, chapter_num: int, data: dict[str, list[str]]
+    ) -> None:
+        """Save extraction data.
+
+        Args:
+            chapter_num: The chapter number.
+            data: Extraction results.
+        """
+        session = self._get_session()
+        try:
+            model = self._find_extraction(session, chapter_num)
+            self._upsert_extraction(session, model, chapter_num, data)
+            session.commit()
+        finally:
+            session.close()
+
+    def _upsert_extraction(
         self,
+        session: Session,
+        model: ExtractionModel | None,
         chapter_num: int,
         data: dict[str, list[str]],
     ) -> None:
-        """Save extraction data."""
-        with self.SessionLocal() as session:
-            stmt = select(ExtractionModel).where(
-                ExtractionModel.workspace_id == self.workspace_id,
-                ExtractionModel.chapter_num == chapter_num,
-            )
-            model = session.scalars(stmt).first()
-            if model:
-                model.data = data
-            else:
-                model = ExtractionModel(
-                    workspace_id=self.workspace_id,
-                    chapter_num=chapter_num,
-                    data=data,
-                )
-                session.add(model)
-            session.commit()
+        """Insert or update an extraction record."""
+        if model:
+            model.data = data
+            return
+        new_model = ExtractionModel(
+            workspace_id=self._require_workspace_id(),
+            chapter_num=chapter_num,
+            data=data,
+        )
+        session.add(new_model)
 
     def load_extraction(self, chapter_num: int) -> dict[str, list[str]]:
         """Load extraction data.
 
+        Args:
+            chapter_num: The chapter number.
+
         Returns:
-            The extraction data.
+            The extraction data dictionary.
 
         Raises:
-            FileNotFoundError: If the extraction does not exist.
+            FileNotFoundError: If the extraction data is missing.
         """
-        with self.SessionLocal() as session:
-            stmt = select(ExtractionModel).where(
-                ExtractionModel.workspace_id == self.workspace_id,
-                ExtractionModel.chapter_num == chapter_num,
-            )
-            model = session.scalars(stmt).first()
-            if not model:
+        session = self._get_session()
+        try:
+            if model := self._find_extraction(session, chapter_num):
+                return {
+                    str(k): [str(v) for v in val]
+                    for k, val in model.data.items()
+                }
+            else:
                 raise FileNotFoundError(
                     f"Extraction for chapter {chapter_num} not found"
                 )
+        finally:
+            session.close()
 
-            return {
-                str(k): [str(v) for v in val] for k, val in model.data.items()
-            }
+    def _find_profile(
+        self,
+        session: Session,
+        chapter_num: int,
+        category: str,
+        name: str,
+    ) -> ProfileModel | None:
+        """Query for a profile by chapter, category, and name.
+
+        Args:
+            session: SQLAlchemy session.
+            chapter_num: The chapter number.
+            category: The entity category.
+            name: The entity name.
+
+        Returns:
+            The profile model if found, None otherwise.
+        """
+        stmt = select(ProfileModel).where(
+            ProfileModel.workspace_id == self._require_workspace_id(),
+            ProfileModel.chapter_num == chapter_num,
+            ProfileModel.category == category,
+            ProfileModel.name == name,
+        )
+        return self._get_model(session, stmt, ProfileModel)
 
     def profile_exists(
         self, chapter_num: int, category: str, name: str
     ) -> bool:
         """Check if profile exists.
 
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            name: The entity name.
+
         Returns:
-            True if it exists.
+            True if the profile exists.
         """
-        with self.SessionLocal() as session:
-            stmt = select(ProfileModel).where(
-                ProfileModel.workspace_id == self.workspace_id,
+        session = self._get_session()
+        try:
+            return (
+                self._find_profile(session, chapter_num, category, name)
+                is not None
+            )
+        finally:
+            session.close()
+
+    def filter_cached_profiles(
+        self, chapter_num: int, category: str, names: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """Split names into those that are cached and those that are not.
+
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            names: List of entity names to check.
+
+        Returns:
+            A tuple of (cached_names, missing_names).
+        """
+        if not names:
+            return [], []
+
+        session = self._get_session()
+        try:
+            stmt = select(ProfileModel.name).where(
+                ProfileModel.workspace_id == self._require_workspace_id(),
                 ProfileModel.chapter_num == chapter_num,
                 ProfileModel.category == category,
-                ProfileModel.name == name,
+                ProfileModel.name.in_(names),
             )
-            return session.scalars(stmt).first() is not None
+            cached_names = set(session.scalars(stmt).all())
+            cached = [n for n in names if n in cached_names]
+            missing = [n for n in names if n not in cached_names]
+            return cached, missing
+        finally:
+            session.close()
 
     def save_profile(
-        self,
-        chapter_num: int,
-        profile: models.EntityProfile,
+        self, chapter_num: int, profile: "models.EntityProfile"
     ) -> None:
-        """Save profile data."""
-        with self.SessionLocal() as session:
-            stmt = select(ProfileModel).where(
-                ProfileModel.workspace_id == self.workspace_id,
-                ProfileModel.chapter_num == chapter_num,
-                ProfileModel.category == profile.category,
-                ProfileModel.name == profile.name,
+        """Save profile data.
+
+        Args:
+            chapter_num: The chapter number.
+            profile: The entity profile model.
+        """
+        session = self._get_session()
+        try:
+            model = self._find_profile(
+                session, chapter_num, profile.category, profile.name
             )
-            model = session.scalars(stmt).first()
-            data = profile.model_dump(mode="json")
-            if model:
-                model.data = data
-            else:
-                model = ProfileModel(
-                    workspace_id=self.workspace_id,
-                    chapter_num=chapter_num,
-                    category=profile.category,
-                    name=profile.name,
-                    data=data,
-                )
-                session.add(model)
+            self._upsert_profile(session, model, chapter_num, profile)
             session.commit()
+        finally:
+            session.close()
+
+    def _upsert_profile(
+        self,
+        session: Session,
+        model: ProfileModel | None,
+        chapter_num: int,
+        profile: "models.EntityProfile",
+    ) -> None:
+        """Insert or update a profile record.
+
+        Args:
+            session: SQLAlchemy session.
+            model: Existing profile model or None.
+            chapter_num: The chapter number.
+            profile: The entity profile model.
+
+        Raises:
+            TypeError: If model_dump does not return a dict.
+        """
+        data = profile.model_dump(mode="json")
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected dict from model_dump, got {type(data)}")
+        if model:
+            model.data = data
+            return
+        new_model = ProfileModel(
+            workspace_id=self._require_workspace_id(),
+            chapter_num=chapter_num,
+            category=profile.category,
+            name=profile.name,
+            data=data,
+        )
+        session.add(new_model)
 
     def load_profile(
         self, chapter_num: int, category: str, name: str
-    ) -> models.EntityProfile:
+    ) -> "models.EntityProfile":
         """Load profile data.
 
+        Args:
+            chapter_num: The chapter number.
+            category: The entity category.
+            name: The entity name.
+
         Returns:
-            The entity profile.
+            The loaded entity profile.
 
         Raises:
-            FileNotFoundError: If the profile does not exist.
+            FileNotFoundError: If the profile is missing.
         """
-        with self.SessionLocal() as session:
-            stmt = select(ProfileModel).where(
-                ProfileModel.workspace_id == self.workspace_id,
-                ProfileModel.chapter_num == chapter_num,
-                ProfileModel.category == category,
-                ProfileModel.name == name,
-            )
-            model = session.scalars(stmt).first()
-            if not model:
+        session = self._get_session()
+        try:
+            if model := self._find_profile(
+                session, chapter_num, category, name
+            ):
+                return models.EntityProfile.model_validate(model.data)
+            else:
                 raise FileNotFoundError(
-                    f"Profile '{name}' ({category}) for chapter {chapter_num} "
-                    "not found"
+                    f"Profile '{name}' ({category}) for chapter"
+                    f" {chapter_num} not found"
                 )
-            return models.EntityProfile.model_validate(model.data)
+        finally:
+            session.close()
+
+    def _find_summary(
+        self, session: Session, category: str, name: str
+    ) -> SummaryModel | None:
+        """Query for a summary by category and name.
+
+        Args:
+            session: SQLAlchemy session.
+            category: The entity category.
+            name: The entity name.
+
+        Returns:
+            The summary model if found, None otherwise.
+        """
+        stmt = select(SummaryModel).where(
+            SummaryModel.workspace_id == self._require_workspace_id(),
+            SummaryModel.category == category,
+            SummaryModel.name == name,
+        )
+        return self._get_model(session, stmt, SummaryModel)
 
     def summary_exists(self, category: str, name: str) -> bool:
         """Check if summary exists.
 
+        Args:
+            category: The entity category.
+            name: The entity name.
+
         Returns:
-            True if it exists.
+            True if the summary exists.
         """
-        with self.SessionLocal() as session:
-            stmt = select(SummaryModel).where(
-                SummaryModel.workspace_id == self.workspace_id,
-                SummaryModel.category == category,
-                SummaryModel.name == name,
-            )
-            return session.scalars(stmt).first() is not None
+        session = self._get_session()
+        try:
+            return self._find_summary(session, category, name) is not None
+        finally:
+            session.close()
 
     def save_summary(self, category: str, name: str, summary: str) -> None:
-        """Save summary data."""
-        with self.SessionLocal() as session:
-            stmt = select(SummaryModel).where(
-                SummaryModel.workspace_id == self.workspace_id,
-                SummaryModel.category == category,
-                SummaryModel.name == name,
-            )
-            model = session.scalars(stmt).first()
-            if model:
-                model.summary = summary
-            else:
-                model = SummaryModel(
-                    workspace_id=self.workspace_id,
-                    category=category,
-                    name=name,
-                    summary=summary,
-                )
-                session.add(model)
+        """Save summary data.
+
+        Args:
+            category: The entity category.
+            name: The entity name.
+            summary: The generated summary text.
+        """
+        session = self._get_session()
+        try:
+            model = self._find_summary(session, category, name)
+            self._upsert_summary(session, model, category, name, summary)
             session.commit()
+        finally:
+            session.close()
+
+    def _upsert_summary(
+        self,
+        session: Session,
+        model: SummaryModel | None,
+        category: str,
+        name: str,
+        summary: str,
+    ) -> None:
+        """Insert or update a summary record."""
+        if model:
+            model.summary = summary
+            return
+        new_model = SummaryModel(
+            workspace_id=self._require_workspace_id(),
+            category=category,
+            name=name,
+            summary=summary,
+        )
+        session.add(new_model)
 
     def load_summary(self, category: str, name: str) -> str:
         """Load summary data.
 
+        Args:
+            category: The entity category.
+            name: The entity name.
+
         Returns:
-            The summary text.
+            The generated summary text.
 
         Raises:
-            FileNotFoundError: If the summary does not exist.
+            FileNotFoundError: If the summary is missing.
+            TypeError: If the summary data is not a string.
         """
-        with self.SessionLocal() as session:
-            stmt = select(SummaryModel).where(
-                SummaryModel.workspace_id == self.workspace_id,
-                SummaryModel.category == category,
-                SummaryModel.name == name,
-            )
-            model = session.scalars(stmt).first()
+        session = self._get_session()
+        try:
+            model = self._find_summary(session, category, name)
             if not model:
                 raise FileNotFoundError(
                     f"Summary for '{name}' ({category}) not found"
                 )
-            return model.summary
+            summary = model.summary
+            if not isinstance(summary, str):
+                raise TypeError(f"Expected str summary, got {type(summary)}")
+            return summary
+        finally:
+            session.close()
 
     def save_book(self, title: str, text: str) -> None:
-        """Save the book text."""
-        with self.SessionLocal() as session:
+        """Save the book text.
+
+        Args:
+            title: The book title.
+            text: The book text content.
+        """
+        session = self._get_session()
+        try:
             stmt = select(BookModel).where(
-                BookModel.workspace_id == self.workspace_id
+                BookModel.workspace_id == self._require_workspace_id()
             )
-            model = session.scalars(stmt).first()
-            if model:
-                model.title = title
-                model.text = text
-            else:
-                model = BookModel(
-                    workspace_id=self.workspace_id,
-                    title=title,
-                    text=text,
-                )
-                session.add(model)
+            model = self._get_model(session, stmt, BookModel)
+            self._upsert_book(session, model, title, text)
             session.commit()
+        finally:
+            session.close()
+
+    def _upsert_book(
+        self,
+        session: Session,
+        model: BookModel | None,
+        title: str,
+        text: str,
+    ) -> None:
+        """Insert or update a book record."""
+        if model:
+            model.title = title
+            model.text = text
+            return
+        new_model = BookModel(
+            workspace_id=self._require_workspace_id(),
+            title=title,
+            text=text,
+        )
+        session.add(new_model)

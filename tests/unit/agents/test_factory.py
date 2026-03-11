@@ -37,6 +37,6 @@ def test_create_agent_with_fallback_wraps_in_fallback_model() -> None:
         primary,
         deps_type=AgentDeps,
         output_type=ExtractionResult,
-        fallback_model=fallback,
+        fallback=fallback,
     )
     assert isinstance(agent.model, FallbackModel)
