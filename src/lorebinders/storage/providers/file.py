@@ -35,8 +35,8 @@ def _get_profile_path(
     Returns:
         The Path to the profile file.
     """
-    safe_name = "".join(c if c.isalnum() else "_" for c in entity_name)
-    safe_category = "".join(c if c.isalnum() else "_" for c in category)
+    safe_name = workspace.sanitize_filename(entity_name)
+    safe_category = workspace.sanitize_filename(category)
     return profiles_dir / f"ch{chapter_num}_{safe_category}_{safe_name}.json"
 
 
@@ -53,8 +53,8 @@ def _get_summary_path(
     Returns:
         The Path to the summary file.
     """
-    safe_category = "".join(c if c.isalnum() else "_" for c in category)
-    safe_name = "".join(c if c.isalnum() else "_" for c in entity_name)
+    safe_category = workspace.sanitize_filename(category)
+    safe_name = workspace.sanitize_filename(entity_name)
     return summaries_dir / f"{safe_category}_{safe_name}_summary.json"
 
 
@@ -333,7 +333,7 @@ class FilesystemStorage:
         path = self._path
         if not isinstance(path, Path):
             raise RuntimeError("Internal error: _path is not a Path")
-        safe_title = "".join(c if c.isalnum() else "_" for c in title)
+        safe_title = workspace.sanitize_filename(title)
         book_path = path / f"{safe_title}.txt"
         book_path.parent.mkdir(parents=True, exist_ok=True)
         with book_path.open(mode="w", encoding="utf-8") as f:

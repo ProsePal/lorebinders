@@ -96,6 +96,7 @@ async def test_build_binder_orchestration(
     ]
 
     fake_storage = MagicMock()
+    fake_storage.path = temp_workspace / "Test_Author" / "Test_Book"
     fake_storage.extraction_exists.return_value = False
     fake_storage.profile_exists.return_value = False
 
@@ -123,10 +124,6 @@ async def test_build_binder_orchestration(
         ),
         patch("lorebinders.workflow.generate_pdf_report") as mock_report,
         patch("lorebinders.workflow.get_storage", return_value=fake_storage),
-        patch(
-            "lorebinders.workflow.ensure_workspace",
-            return_value=temp_workspace / "Test_Author" / "Test_Book",
-        ),
     ):
         result = await build_binder(run_config)
 

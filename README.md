@@ -20,18 +20,15 @@ analyzes their traits, and generates a detailed PDF report.
 
 ## Installation
 
-LoreBinders requires Python 3.10 or higher. We recommend using
+LoreBinders requires Python 3.11 or higher. We recommend using
 [uv](https://github.com/astral-sh/uv) for dependency management, but `pip`
 also works.
 
 ### Using `uv` (Recommended)
 
 You don't need to install LoreBinders globally. You can run it directly from
-the source directory:
+the source directory.
 
-```bash
-uv sync
-```
 
 ### Using `pip`
 
@@ -54,7 +51,7 @@ uv run lorebinders-cli path/to/your/book.epub --author "Author Name" --title "Bo
 
 ### Advanced Usage
 
-You can customize the process with various options:
+You can customize the  process with various options:
 
 ```bash
 uv run lorebinders-cli path/to/your/book.epub \
@@ -121,13 +118,13 @@ To contribute to LoreBinders, you'll need to set up a development environment.
 3. **Install pre-commit hooks**:
 
    ```bash
-   pre-commit install
+   uvx pre-commit install
    ```
 
 4. **Run tests**:
 
    ```bash
-   pytest
+   uv run pytest
    ```
 
 ## License

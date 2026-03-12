@@ -7,7 +7,7 @@ from pydantic_ai.models.function import FunctionModel
 from lorebinders.agent.analysis import analyze_entities
 from lorebinders.models import AgentDeps, Book, Chapter
 from lorebinders.settings import Settings
-from lorebinders.storage.providers.test import TestStorageProvider
+from tests.utils import TestStorageProvider
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore::DeprecationWarning:google.genai.types"

@@ -3,11 +3,12 @@
 This module exposes a singleton get_storage() for the storage provider.
 """
 
+import functools
+
 from lorebinders.storage.provider import StorageProvider
 
-__storage_singleton: StorageProvider | None = None
 
-
+@functools.lru_cache(maxsize=1)
 def get_storage(
     provider: type[StorageProvider],
 ) -> StorageProvider:
@@ -19,7 +20,4 @@ def get_storage(
     Returns:
         StorageProvider: A singleton storage implementation.
     """
-    global __storage_singleton
-    if not __storage_singleton or not isinstance(__storage_singleton, provider):
-        __storage_singleton = provider()
-    return __storage_singleton
+    return provider()

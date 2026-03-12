@@ -125,7 +125,7 @@ def main(
             console=console,
         ) as progress:
             handler = ProgressHandler(progress)
-            output = app.run(config, progress=handler, log_file=log_file)
+            output = app.run(config, progress=handler)
 
         console.print(f"[bold green]Complete![/bold green] Report: {output}")
     except Exception as e:

@@ -9,11 +9,8 @@ from pydantic_ai import Agent
 from lorebinders import models
 from lorebinders.agent.factory import (
     build_summarization_user_prompt,
-    create_summarization_agent,
-    load_prompt_from_assets,
     run_agent_async,
 )
-from lorebinders.settings import get_settings
 from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
@@ -208,8 +205,8 @@ def _collect_tasks(
 async def summarize_binder(
     binder: models.Binder,
     storage: StorageProvider,
-    agent: Agent[models.AgentDeps, models.SummarizerResult] | None = None,
-    deps: models.AgentDeps | None = None,
+    agent: Agent[models.AgentDeps, models.SummarizerResult],
+    deps: models.AgentDeps,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
     on_observe: Callable[[models.ObservationEvent], None] | None = None,
 ) -> None:
@@ -218,18 +215,11 @@ async def summarize_binder(
     Args:
         binder: The binder model to update.
         storage: The storage provider.
-        agent: Optional agent override.
-        deps: Optional dependencies override.
+        agent: The agent instance to use.
+        deps: The agent dependencies.
         progress: Optional progress callback.
         on_observe: Optional observation callback.
     """
-    if agent is None:
-        agent = create_summarization_agent()
-    if deps is None:
-        deps = models.AgentDeps(
-            settings=get_settings(), prompt_loader=load_prompt_from_assets
-        )
-
     tasks = _collect_tasks(binder)
     if not tasks:
         return

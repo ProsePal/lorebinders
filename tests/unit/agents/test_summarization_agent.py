@@ -15,7 +15,7 @@ from lorebinders.agent.factory import (
 from lorebinders.agent.summarization import summarize_binder
 from lorebinders.models import AgentDeps, Binder, SummarizerResult
 from lorebinders.settings import Settings
-from lorebinders.storage.providers.test import TestStorageProvider
+from tests.utils import TestStorageProvider
 
 
 @pytest.mark.anyio

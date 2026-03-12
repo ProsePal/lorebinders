@@ -30,7 +30,6 @@ from lorebinders.storage import (
     get_storage,
     sanitize_filename,
 )
-from lorebinders.storage.workspace import ensure_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -110,32 +109,6 @@ def _aggregate_to_binder(
     return binder
 
 
-def _emit_stage_start(
-    on_observe: Callable[[models.ObservationEvent], None] | None,
-    stage: str,
-    message: str,
-    metadata: dict[str, str | int | float | bool | None] | None = None,
-) -> None:
-    """Helper for stage start events.
-
-    Args:
-        on_observe: Optional observation callback.
-        stage: Stage name.
-        message: Event message.
-        metadata: Optional event metadata.
-    """
-    if not on_observe:
-        return
-    on_observe(
-        models.ObservationEvent(
-            type=models.ObservationType.STAGE_STARTED,
-            stage=stage,
-            message=message,
-            metadata=metadata or {},
-        )
-    )
-
-
 async def build_binder(
     config: models.RunConfiguration,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
@@ -172,15 +145,19 @@ async def build_binder(
     storage = get_storage(provider)
     storage.set_workspace(config.author_name, config.book_title)
 
-    _emit_stage_start(
-        on_observe, "ingestion", f"Ingesting {config.book_path.name}"
+    models.emit_observation(
+        on_observe,
+        models.ObservationType.STAGE_STARTED,
+        "ingestion",
+        f"Ingesting {config.book_path.name}",
     )
     text = await asyncio.to_thread(convert_to_text, config.book_path)
     await asyncio.to_thread(storage.save_book, config.book_title, text)
     book = ingest(text, config.book_path.stem)
 
-    _emit_stage_start(
+    models.emit_observation(
         on_observe,
+        models.ObservationType.STAGE_STARTED,
         "extraction",
         "Starting extraction",
         {"total_chapters": len(book.chapters)},
@@ -199,8 +176,9 @@ async def build_binder(
     narrator = config.narrator_config.name
     sorted_ext = sort_extractions(raw, narrator)
 
-    _emit_stage_start(
+    models.emit_observation(
         on_observe,
+        models.ObservationType.STAGE_STARTED,
         "analysis",
         "Starting analysis",
         {"total_batches": sum(len(e) for e in sorted_ext.values())}
@@ -211,13 +189,19 @@ async def build_binder(
         sorted_ext, book, ana_agent, deps, traits, storage, progress, on_observe
     )
 
-    _emit_stage_start(on_observe, "refinement", "Refining binder data")
+    models.emit_observation(
+        on_observe,
+        models.ObservationType.STAGE_STARTED,
+        "refinement",
+        "Refining binder data",
+    )
     raw_binder = _aggregate_to_binder(profiles)
     binder = refine_binder(raw_binder, config.narrator_config.name)
 
     total_ent = sum(len(c.entities) for c in binder.categories.values())
-    _emit_stage_start(
+    models.emit_observation(
         on_observe,
+        models.ObservationType.STAGE_STARTED,
         "summarization",
         "Starting summarization",
         {"total_entities": total_ent},
@@ -227,11 +211,14 @@ async def build_binder(
     )
 
     safe_title = sanitize_filename(config.book_title)
-    output_dir = ensure_workspace(config.author_name, config.book_title)
+    output_dir = storage.path
     output_file = output_dir / f"{safe_title}_story_bible.pdf"
 
-    _emit_stage_start(
-        on_observe, "reporting", f"Generating PDF to {output_file.name}"
+    models.emit_observation(
+        on_observe,
+        models.ObservationType.STAGE_STARTED,
+        "reporting",
+        f"Generating PDF to {output_file.name}",
     )
     await asyncio.to_thread(generate_pdf_report, binder, output_file)
 

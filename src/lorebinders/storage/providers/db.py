@@ -181,11 +181,8 @@ class DBStorage:
         Returns:
             True if extraction data exists for the chapter.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             return self._find_extraction(session, chapter_num) is not None
-        finally:
-            session.close()
 
     def save_extraction(
         self, chapter_num: int, data: dict[str, list[str]]
@@ -196,13 +193,10 @@ class DBStorage:
             chapter_num: The chapter number.
             data: Extraction results.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             model = self._find_extraction(session, chapter_num)
             self._upsert_extraction(session, model, chapter_num, data)
             session.commit()
-        finally:
-            session.close()
 
     def _upsert_extraction(
         self,
@@ -234,8 +228,7 @@ class DBStorage:
         Raises:
             FileNotFoundError: If the extraction data is missing.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             if model := self._find_extraction(session, chapter_num):
                 return {
                     str(k): [str(v) for v in val]
@@ -245,8 +238,6 @@ class DBStorage:
                 raise FileNotFoundError(
                     f"Extraction for chapter {chapter_num} not found"
                 )
-        finally:
-            session.close()
 
     def _find_profile(
         self,
@@ -287,14 +278,11 @@ class DBStorage:
         Returns:
             True if the profile exists.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             return (
                 self._find_profile(session, chapter_num, category, name)
                 is not None
             )
-        finally:
-            session.close()
 
     def filter_cached_profiles(
         self, chapter_num: int, category: str, names: list[str]
@@ -312,8 +300,7 @@ class DBStorage:
         if not names:
             return [], []
 
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             stmt = select(ProfileModel.name).where(
                 ProfileModel.workspace_id == self._require_workspace_id(),
                 ProfileModel.chapter_num == chapter_num,
@@ -324,8 +311,6 @@ class DBStorage:
             cached = [n for n in names if n in cached_names]
             missing = [n for n in names if n not in cached_names]
             return cached, missing
-        finally:
-            session.close()
 
     def save_profile(
         self, chapter_num: int, profile: "models.EntityProfile"
@@ -336,15 +321,12 @@ class DBStorage:
             chapter_num: The chapter number.
             profile: The entity profile model.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             model = self._find_profile(
                 session, chapter_num, profile.category, profile.name
             )
             self._upsert_profile(session, model, chapter_num, profile)
             session.commit()
-        finally:
-            session.close()
 
     def _upsert_profile(
         self,
@@ -395,8 +377,7 @@ class DBStorage:
         Raises:
             FileNotFoundError: If the profile is missing.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             if model := self._find_profile(
                 session, chapter_num, category, name
             ):
@@ -406,8 +387,6 @@ class DBStorage:
                     f"Profile '{name}' ({category}) for chapter"
                     f" {chapter_num} not found"
                 )
-        finally:
-            session.close()
 
     def _find_summary(
         self, session: Session, category: str, name: str
@@ -439,11 +418,8 @@ class DBStorage:
         Returns:
             True if the summary exists.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             return self._find_summary(session, category, name) is not None
-        finally:
-            session.close()
 
     def save_summary(self, category: str, name: str, summary: str) -> None:
         """Save summary data.
@@ -453,13 +429,10 @@ class DBStorage:
             name: The entity name.
             summary: The generated summary text.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             model = self._find_summary(session, category, name)
             self._upsert_summary(session, model, category, name, summary)
             session.commit()
-        finally:
-            session.close()
 
     def _upsert_summary(
         self,
@@ -495,8 +468,7 @@ class DBStorage:
             FileNotFoundError: If the summary is missing.
             TypeError: If the summary data is not a string.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             model = self._find_summary(session, category, name)
             if not model:
                 raise FileNotFoundError(
@@ -506,8 +478,6 @@ class DBStorage:
             if not isinstance(summary, str):
                 raise TypeError(f"Expected str summary, got {type(summary)}")
             return summary
-        finally:
-            session.close()
 
     def save_book(self, title: str, text: str) -> None:
         """Save the book text.
@@ -516,16 +486,13 @@ class DBStorage:
             title: The book title.
             text: The book text content.
         """
-        session = self._get_session()
-        try:
+        with self._get_session() as session:
             stmt = select(BookModel).where(
                 BookModel.workspace_id == self._require_workspace_id()
             )
             model = self._get_model(session, stmt, BookModel)
             self._upsert_book(session, model, title, text)
             session.commit()
-        finally:
-            session.close()
 
     def _upsert_book(
         self,

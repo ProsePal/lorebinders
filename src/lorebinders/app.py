@@ -15,7 +15,6 @@ def run(
     config: models.RunConfiguration,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
     on_observe: Callable[[models.ObservationEvent], None] | None = None,
-    log_file: Path | None = None,
     extraction_agent: (
         Agent[models.AgentDeps, models.ExtractionResult] | None
     ) = None,
@@ -32,7 +31,6 @@ def run(
         config: The run configuration containing book path, author, title, etc.
         progress: Optional callback to report progress.
         on_observe: Optional callback for rich observation events.
-        log_file: Optional path to log file.
         extraction_agent: Optional agent override.
         analysis_agent: Optional agent override.
         summarization_agent: Optional agent override.

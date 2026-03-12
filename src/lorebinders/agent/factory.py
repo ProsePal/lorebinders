@@ -22,6 +22,7 @@ from lorebinders.models import (
     ObservationEvent,
     ObservationType,
     SummarizerResult,
+    emit_observation,
 )
 from lorebinders.settings import get_settings
 
@@ -51,26 +52,6 @@ def load_prompt_from_assets(filename: str) -> str:
 
 def _is_moderation_error(exc: Exception) -> bool:
     return isinstance(exc, ModelHTTPError) and exc.status_code == 403
-
-
-def _emit_observation(
-    on_observe: Callable[[ObservationEvent], None] | None,
-    event_type: ObservationType,
-    stage: str,
-    message: str,
-    metadata: dict[str, str | int | float | bool | None] | None = None,
-) -> None:
-    """Helper to emit observation event if callback is provided."""
-    if not on_observe:
-        return
-    on_observe(
-        ObservationEvent(
-            type=event_type,
-            stage=stage,
-            message=message,
-            metadata=metadata or {},
-        )
-    )
 
 
 def create_agent(
@@ -125,7 +106,7 @@ async def run_agent_async(
     model = str(agent.model) or "unknown"
     logger.debug(f"Running agent (async) with model: {model}")
     meta: dict[str, str | int | float | bool | None] = {"model": model}
-    _emit_observation(
+    emit_observation(
         on_observe,
         ObservationType.AGENT_RUN_STARTED,
         "agent",
@@ -137,7 +118,7 @@ async def run_agent_async(
             user_prompt, deps=deps, model_settings=model_settings
         )
         logger.debug("Agent run completed successfully")
-        _emit_observation(
+        emit_observation(
             on_observe,
             ObservationType.AGENT_RUN_COMPLETED,
             "agent",
@@ -147,7 +128,7 @@ async def run_agent_async(
         return res.output
     except Exception as e:
         logger.error(f"Agent run failed: {e}")
-        _emit_observation(
+        emit_observation(
             on_observe,
             ObservationType.ERROR,
             "agent",

@@ -214,3 +214,23 @@ class ObservationEvent(BaseModel):
     metadata: dict[str, str | int | float | bool | None] = Field(
         default_factory=dict
     )
+
+
+def emit_observation(
+    on_observe: Callable[[ObservationEvent], None] | None,
+    event_type: ObservationType,
+    stage: str,
+    message: str,
+    metadata: dict[str, str | int | float | bool | None] | None = None,
+) -> None:
+    """Helper to emit observation event if callback is provided."""
+    if not on_observe:
+        return
+    on_observe(
+        ObservationEvent(
+            type=event_type,
+            stage=stage,
+            message=message,
+            metadata=metadata or {},
+        )
+    )
