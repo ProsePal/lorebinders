@@ -8,47 +8,42 @@ runner = CliRunner()
 
 
 def test_cli_help() -> None:
-    result = runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["main", "--help"])
     assert result.exit_code == 0
     assert "Usage" in result.stdout
 
 
-def test_cli_requires_book_path() -> None:
-    result = runner.invoke(cli, ["--author", "Test", "--title", "Test"])
+def test_cli_requires_book() -> None:
+    result = runner.invoke(cli, ["--author", "Test", "--series-title", "Test"])
     assert result.exit_code != 0
+    assert "At least one --book must be provided" in result.output
 
 
 def test_cli_requires_author() -> None:
-    result = runner.invoke(cli, ["nonexistent.epub", "--title", "Test"])
-    assert result.exit_code != 0
-
-
-def test_cli_requires_title() -> None:
-    result = runner.invoke(cli, ["nonexistent.epub", "--author", "Test"])
-    assert result.exit_code != 0
-
-
-def test_cli_file_not_found() -> None:
     result = runner.invoke(
-        cli,
-        ["nonexistent.epub", "--author", "Test Author", "--title", "Test Book"],
+        cli, ["--book", "test.txt", "--series-title", "Test"]
     )
     assert result.exit_code != 0
-    assert "Invalid value for 'BOOK_PATH'" in result.output
+
+
+def test_cli_requires_series_title() -> None:
+    result = runner.invoke(cli, ["--book", "test.txt", "--author", "Test"])
+    assert result.exit_code != 0
 
 
 def test_cli_accepts_expected_arguments(tmp_path: Path) -> None:
-    book_path = tmp_path / "book.epub"
+    book_path = tmp_path / "book.txt"
     book_path.write_text("content")
 
     result = runner.invoke(
         cli,
         [
+            "--book",
             str(book_path),
             "--author",
             "Jane Doe",
-            "--title",
-            "My Book",
+            "--series-title",
+            "My Series",
             "--help",
         ],
     )

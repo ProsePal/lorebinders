@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import TypeAlias
 
 from pydantic_ai.messages import (
     ModelMessage,
@@ -8,9 +9,13 @@ from pydantic_ai.messages import (
     SystemPromptPart,
     TextPart,
 )
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 import lorebinders.models as models
+
+JsonValue: TypeAlias = (
+    str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+)
 
 
 class TestStorageProvider:
@@ -25,8 +30,10 @@ class TestStorageProvider:
         """
         self.author = author
         self.title = title
-        self.extractions: dict[int, dict[str, list[str]]] = {}
-        self.profiles: dict[tuple[int, str, str], models.EntityProfile] = {}
+        self.extractions: dict[tuple[int, str], dict[str, list[str]]] = {}
+        self.profiles: dict[
+            tuple[int, str, str, str], models.EntityProfile
+        ] = {}
         self.summaries: dict[tuple[str, str], str] = {}
         self.book_text = ""
 
@@ -39,43 +46,49 @@ class TestStorageProvider:
         """
         return Path("/tmp/lorebinders_test")
 
-    def extraction_exists(self, chapter_num: int) -> bool:
+    def extraction_exists(self, chapter_num: int, book_title: str = "") -> bool:
         """Check if extraction exists.
 
         Args:
             chapter_num: The chapter number.
+            book_title: The book title.
 
         Returns:
             True if extraction data exists for the chapter.
         """
-        return chapter_num in self.extractions
+        return (chapter_num, book_title) in self.extractions
 
     def save_extraction(
         self,
         chapter_num: int,
         data: dict[str, list[str]],
+        book_title: str = "",
     ) -> None:
         """Save extraction data.
 
         Args:
             chapter_num: The chapter number.
             data: The extraction data.
+            book_title: The book title.
         """
-        self.extractions[chapter_num] = data
+        self.extractions[(chapter_num, book_title)] = data
 
-    def load_extraction(self, chapter_num: int) -> dict[str, list[str]]:
+    def load_extraction(
+        self, chapter_num: int, book_title: str = ""
+    ) -> dict[str, list[str]]:
         """Load extraction data.
 
         Args:
             chapter_num (int): The chapter number of the extraction.
+            book_title: The book title.
 
         Returns:
             The extraction data dictionary.
         """
-        return self.extractions[chapter_num]
+        return self.extractions[(chapter_num, book_title)]
 
     def profile_exists(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> bool:
         """Check if profile exists.
 
@@ -83,14 +96,19 @@ class TestStorageProvider:
             chapter_num: The chapter number.
             category: The entity category.
             name: The entity name.
+            book_title: The book title.
 
         Returns:
             True if the profile exists.
         """
-        return (chapter_num, category, name) in self.profiles
+        return (chapter_num, category, name, book_title) in self.profiles
 
     def filter_cached_profiles(
-        self, chapter_num: int, category: str, names: list[str]
+        self,
+        chapter_num: int,
+        category: str,
+        names: list[str],
+        book_title: str = "",
     ) -> tuple[list[str], list[str]]:
         """Split names into those that are cached and those that are not.
 
@@ -98,13 +116,14 @@ class TestStorageProvider:
             chapter_num: The chapter number.
             category: The entity category.
             names: List of entity names to check.
+            book_title: The book title.
 
         Returns:
             A tuple of (cached_names, missing_names).
         """
         cached, missing = [], []
         for n in names:
-            if self.profile_exists(chapter_num, category, n):
+            if self.profile_exists(chapter_num, category, n, book_title):
                 cached.append(n)
             else:
                 missing.append(n)
@@ -121,11 +140,16 @@ class TestStorageProvider:
             chapter_num (int): The chapter number of the profile.
             profile (models.EntityProfile): The profile data.
         """
-        key = (chapter_num, profile.category, profile.name)
+        key = (
+            chapter_num,
+            profile.category,
+            profile.name,
+            profile.book_title,
+        )
         self.profiles[key] = profile
 
     def load_profile(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> models.EntityProfile:
         """Load profile data.
 
@@ -133,11 +157,12 @@ class TestStorageProvider:
             chapter_num (int): The chapter number of the profile.
             category (str): The category of the profile.
             name (str): The name of the profile.
+            book_title: The book title.
 
         Returns:
             The loaded entity profile.
         """
-        key = (chapter_num, category, name)
+        key = (chapter_num, category, name, book_title)
         return self.profiles[key]
 
     def summary_exists(self, category: str, name: str) -> bool:
@@ -191,21 +216,30 @@ class TestStorageProvider:
 
 
 def create_mock_model(
-    response_data: object,
+    response_data: JsonValue,
     model_name: str | None = None,
 ) -> tuple[FunctionModel, list[ModelMessage]]:
+    """Create a mock pydantic-ai model that returns fixed response data.
+
+    Args:
+        response_data: JSON-serializable data to return as the model response.
+        model_name: Optional model name override.
+
+    Returns:
+        A tuple of (mock FunctionModel, list that captures sent messages).
+    """
     captured_messages: list[ModelMessage] = []
 
-    def _serialize(data: object) -> object:
-        if hasattr(data, "model_dump"):
-            return data.model_dump()
+    def _serialize(data: JsonValue) -> JsonValue:
         if isinstance(data, list):
             return [_serialize(item) for item in data]
         if isinstance(data, dict):
             return {k: _serialize(v) for k, v in data.items()}
         return data
 
-    def mock_call(messages: list[ModelMessage], info: object) -> ModelResponse:
+    def mock_call(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
         nonlocal captured_messages
         captured_messages.extend(messages)
         return ModelResponse(

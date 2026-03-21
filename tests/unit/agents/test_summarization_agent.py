@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from lorebinders.agent.factory import (
@@ -32,7 +32,7 @@ async def test_summarization_agent_run_async_and_prompt() -> None:
     )
 
     def mock_model_call(
-        messages: list[ModelMessage], info: object
+        messages: list[ModelMessage], info: AgentInfo
     ) -> ModelResponse:
         nonlocal captured_messages
         captured_messages = list(messages)
@@ -91,15 +91,25 @@ async def test_summarize_binder(tmp_path: Path) -> None:
     agent = create_summarization_agent()
 
     binder = Binder()
-    binder.add_appearance("Characters", "Frodo", 1, {"Traits": ["Brave"]})
     binder.add_appearance(
-        "Characters", "Frodo", 2, {"Traits": ["Brave", "Short"]}
+        "Characters", "Frodo", 1, "Book 1", {"Traits": ["Brave"]}
     )
     binder.add_appearance(
-        "Locations", "Shire", 1, {"Type": "Village", "Vibe": "Peaceful"}
+        "Characters", "Frodo", 2, "Book 1", {"Traits": ["Brave", "Short"]}
     )
     binder.add_appearance(
-        "Locations", "Shire", 3, {"Type": "Target", "Vibe": "Threatened"}
+        "Locations",
+        "Shire",
+        1,
+        "Book 1",
+        {"Type": "Village", "Vibe": "Peaceful"},
+    )
+    binder.add_appearance(
+        "Locations",
+        "Shire",
+        3,
+        "Book 1",
+        {"Type": "Target", "Vibe": "Threatened"},
     )
 
     storage = TestStorageProvider()

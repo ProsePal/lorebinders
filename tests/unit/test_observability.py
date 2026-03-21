@@ -21,9 +21,9 @@ def run_config(tmp_path: Path) -> models.RunConfiguration:
     book_file = tmp_path / "book.txt"
     book_file.write_text("Chapter 1\nAlice.")
     return models.RunConfiguration(
-        book_path=book_file,
+        series_title="Test Series",
+        books=[models.BookInput(path=book_file, title="Test Book")],
         author_name="Test Author",
-        book_title="Test Book",
         narrator_config=models.NarratorConfig(),
     )
 
@@ -79,10 +79,6 @@ async def test_build_binder_emits_both_callbacks_with_agents(
         patch("lorebinders.workflow.ingest", return_value=fake_book),
         patch("lorebinders.workflow.generate_pdf_report"),
         patch("lorebinders.workflow.get_storage", return_value=fake_storage),
-        patch(
-            "lorebinders.workflow.ensure_workspace",
-            return_value=tmp_path / "workspace",
-        ),
     ):
         await build_binder(
             run_config,

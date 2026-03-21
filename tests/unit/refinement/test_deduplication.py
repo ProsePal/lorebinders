@@ -3,6 +3,7 @@ import pytest
 from lorebinders.models import (
     Binder,
     CategoryRecord,
+    ChapterAppearances,
     EntityAppearance,
     EntityRecord,
 )
@@ -39,8 +40,8 @@ def test_prioritize_keys(
 def test_resolve_category_entities_merges_duplicates() -> None:
     category = CategoryRecord(name="Characters")
     category.entities["John"] = EntityRecord(name="John", category="Characters")
-    category.entities["John"].appearances[1] = EntityAppearance(
-        traits={"trait": "A"}
+    category.entities["John"].appearances["Book 1"] = ChapterAppearances(
+        chapters={1: EntityAppearance(traits={"trait": "A"})}
     )
     category.entities["John Smith"] = EntityRecord(
         name="John Smith", category="Characters"
@@ -68,8 +69,8 @@ def test_resolve_category_entities_preserves_distinct() -> None:
 
 def test_resolve_binder_resolves_categories() -> None:
     binder = Binder()
-    binder.add_appearance("Characters", "John", 1, {"A": "B"})
-    binder.add_appearance("Characters", "John Smith", 1, {"C": "D"})
+    binder.add_appearance("Characters", "John", 1, "Book 1", {"A": "B"})
+    binder.add_appearance("Characters", "John Smith", 1, "Book 1", {"C": "D"})
 
     binder.categories["Locations"] = CategoryRecord(name="Locations")
 

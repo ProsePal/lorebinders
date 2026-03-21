@@ -32,19 +32,36 @@ def _format_traits(traits: dict[str, list[str] | str]) -> list[str]:
     return lines
 
 
-def _format_context(details: dict[int, models.EntityAppearance]) -> str:
+def _format_context(details: dict[str, models.AppearanceValue]) -> str:
     """Format the entity data into a readable string for the AI.
 
     Args:
-        details: Mapping of chapter numbers to entity appearances.
+        details: Mapping of chapters/book titles to entity appearances.
 
     Returns:
         A formatted string containing entity traits across chapters.
     """
     lines = []
-    for chap_num, appearance in details.items():
-        lines.append(f"Chapter {chap_num}:")
-        lines.extend(_format_traits(appearance.traits))
+    if not details:
+        return ""
+
+    first_val = next(iter(details.values()))
+    if isinstance(first_val, models.ChapterAppearances):
+        for book_title, book_app in details.items():
+            if not isinstance(book_app, models.ChapterAppearances):
+                continue
+            lines.append(f"Book: {book_title}")
+            for chap_num, appearance in book_app.chapters.items():
+                lines.append(f"  Chapter {chap_num}:")
+                lines.extend(
+                    [f"  {line}" for line in _format_traits(appearance.traits)]
+                )
+    else:
+        for k, appearance_val in details.items():
+            lines.append(f"{k}:")
+            if isinstance(appearance_val, models.SingleAppearance):
+                lines.extend(_format_traits(appearance_val.appearance.traits))
+
     return "\n".join(lines)
 
 

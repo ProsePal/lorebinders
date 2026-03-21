@@ -8,21 +8,29 @@ from lorebinders import models
 logger = logging.getLogger(__name__)
 
 
-def _get_extraction_path(extractions_dir: Path, chapter_num: int) -> Path:
+def _get_extraction_path(
+    extractions_dir: Path, chapter_num: int, book_title: str = ""
+) -> Path:
     """Helper to construct the path for an extraction file.
 
     Args:
         extractions_dir: The base directory for extractions.
         chapter_num: The chapter number.
+        book_title: The optional book title.
 
     Returns:
         The Path to the extraction file.
     """
-    return extractions_dir / f"ch{chapter_num}_extraction.json"
+    prefix = f"{workspace.sanitize_filename(book_title)}_" if book_title else ""
+    return extractions_dir / f"{prefix}ch{chapter_num}_extraction.json"
 
 
 def _get_profile_path(
-    profiles_dir: Path, chapter_num: int, category: str, entity_name: str
+    profiles_dir: Path,
+    chapter_num: int,
+    category: str,
+    entity_name: str,
+    book_title: str = "",
 ) -> Path:
     """Helper to construct the path for a profile file.
 
@@ -31,13 +39,18 @@ def _get_profile_path(
         chapter_num: The chapter number.
         category: The entity category.
         entity_name: The entity name.
+        book_title: The optional book title.
 
     Returns:
         The Path to the profile file.
     """
     safe_name = workspace.sanitize_filename(entity_name)
     safe_category = workspace.sanitize_filename(category)
-    return profiles_dir / f"ch{chapter_num}_{safe_category}_{safe_name}.json"
+    prefix = f"{workspace.sanitize_filename(book_title)}_" if book_title else ""
+    return (
+        profiles_dir
+        / f"{prefix}ch{chapter_num}_{safe_category}_{safe_name}.json"
+    )
 
 
 def _get_summary_path(
@@ -105,11 +118,12 @@ class FilesystemStorage:
             raise RuntimeError("Internal error: _path is not a Path")
         return path
 
-    def extraction_exists(self, chapter_num: int) -> bool:
+    def extraction_exists(self, chapter_num: int, book_title: str = "") -> bool:
         """Check if extraction exists.
 
         Args:
             chapter_num: The chapter number.
+            book_title: The optional book title.
 
         Returns:
             True if extraction data exists for the chapter.
@@ -117,18 +131,22 @@ class FilesystemStorage:
         self._ensure_initialized()
         if self.extractions_dir is None:
             return False
-        return _get_extraction_path(self.extractions_dir, chapter_num).exists()
+        return _get_extraction_path(
+            self.extractions_dir, chapter_num, book_title
+        ).exists()
 
     def save_extraction(
         self,
         chapter_num: int,
         data: dict[str, list[str]],
+        book_title: str = "",
     ) -> None:
         """Save extraction data.
 
         Args:
             chapter_num: The chapter number.
             data: The extraction data.
+            book_title: The optional book title.
 
         Raises:
             RuntimeError: If extractions_dir is not set.
@@ -136,17 +154,22 @@ class FilesystemStorage:
         self._ensure_initialized()
         if self.extractions_dir is None:
             raise RuntimeError("extractions_dir is not set")
-        path = _get_extraction_path(self.extractions_dir, chapter_num)
+        path = _get_extraction_path(
+            self.extractions_dir, chapter_num, book_title
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open(mode="w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         logger.debug(f"Saved extraction for chapter {chapter_num}")
 
-    def load_extraction(self, chapter_num: int) -> dict[str, list[str]]:
+    def load_extraction(
+        self, chapter_num: int, book_title: str = ""
+    ) -> dict[str, list[str]]:
         """Load extraction data.
 
         Args:
             chapter_num: The chapter number of the extraction.
+            book_title: The optional book title.
 
         Returns:
             The extraction data dictionary.
@@ -158,7 +181,9 @@ class FilesystemStorage:
         self._ensure_initialized()
         if self.extractions_dir is None:
             raise RuntimeError("extractions_dir is not set")
-        path = _get_extraction_path(self.extractions_dir, chapter_num)
+        path = _get_extraction_path(
+            self.extractions_dir, chapter_num, book_title
+        )
         with path.open(encoding="utf-8") as f:
             logger.debug(f"Loaded extraction for chapter {chapter_num}")
             data = json.load(f)
@@ -167,7 +192,7 @@ class FilesystemStorage:
             return data
 
     def profile_exists(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> bool:
         """Check if profile exists.
 
@@ -175,6 +200,7 @@ class FilesystemStorage:
             chapter_num: The chapter number of the profile.
             category: The category of the profile.
             name: The name of the profile.
+            book_title: The optional book title.
 
         Returns:
             bool: True if the profile exists, False otherwise.
@@ -183,11 +209,15 @@ class FilesystemStorage:
         if self.profiles_dir is None:
             return False
         return _get_profile_path(
-            self.profiles_dir, chapter_num, category, name
+            self.profiles_dir, chapter_num, category, name, book_title
         ).exists()
 
     def filter_cached_profiles(
-        self, chapter_num: int, category: str, names: list[str]
+        self,
+        chapter_num: int,
+        category: str,
+        names: list[str],
+        book_title: str = "",
     ) -> tuple[list[str], list[str]]:
         """Split names into those that are cached and those that are not.
 
@@ -195,13 +225,14 @@ class FilesystemStorage:
             chapter_num: The chapter number.
             category: The entity category.
             names: List of entity names to check.
+            book_title: The optional book title.
 
         Returns:
             A tuple of (cached_names, missing_names).
         """
         cached, missing = [], []
         for n in names:
-            if self.profile_exists(chapter_num, category, n):
+            if self.profile_exists(chapter_num, category, n, book_title):
                 cached.append(n)
             else:
                 missing.append(n)
@@ -225,7 +256,11 @@ class FilesystemStorage:
         if self.profiles_dir is None:
             raise RuntimeError("profiles_dir is not set")
         path = _get_profile_path(
-            self.profiles_dir, chapter_num, profile.category, profile.name
+            self.profiles_dir,
+            chapter_num,
+            profile.category,
+            profile.name,
+            profile.book_title,
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open(mode="w", encoding="utf-8") as f:
@@ -233,7 +268,7 @@ class FilesystemStorage:
         logger.debug(f"Saved profile: {profile.category}/{profile.name}")
 
     def load_profile(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> "models.EntityProfile":
         """Load profile data.
 
@@ -241,6 +276,7 @@ class FilesystemStorage:
             chapter_num: The chapter number of the profile.
             category: The category of the profile.
             name: The name of the profile.
+            book_title: The optional book title.
 
         Returns:
             The loaded entity profile.
@@ -251,7 +287,9 @@ class FilesystemStorage:
         self._ensure_initialized()
         if self.profiles_dir is None:
             raise RuntimeError("profiles_dir is not set")
-        path = _get_profile_path(self.profiles_dir, chapter_num, category, name)
+        path = _get_profile_path(
+            self.profiles_dir, chapter_num, category, name, book_title
+        )
         with path.open(encoding="utf-8") as f:
             content = f.read()
             return models.EntityProfile.model_validate_json(content)

@@ -32,10 +32,8 @@ class BookModel(Base):
     __tablename__ = "books"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    workspace_id: Mapped[str] = mapped_column(
-        String(1024), index=True, unique=True
-    )
-    title: Mapped[str] = mapped_column(String(255))
+    workspace_id: Mapped[str] = mapped_column(String(1024), index=True)
+    title: Mapped[str] = mapped_column(String(255), index=True)
     text: Mapped[str] = mapped_column(String)
 
 
@@ -46,6 +44,7 @@ class ExtractionModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     workspace_id: Mapped[str] = mapped_column(String(1024), index=True)
+    book_title: Mapped[str] = mapped_column(String(255), index=True, default="")
     chapter_num: Mapped[int] = mapped_column(index=True)
     data: Mapped[dict[str, list[str]]] = mapped_column(JSON)
 
@@ -57,6 +56,7 @@ class ProfileModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     workspace_id: Mapped[str] = mapped_column(String(1024), index=True)
+    book_title: Mapped[str] = mapped_column(String(255), index=True, default="")
     chapter_num: Mapped[int] = mapped_column(index=True)
     category: Mapped[str] = mapped_column(String(255), index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
@@ -155,13 +155,14 @@ class DBStorage:
         return None
 
     def _find_extraction(
-        self, session: Session, chapter_num: int
+        self, session: Session, chapter_num: int, book_title: str = ""
     ) -> ExtractionModel | None:
         """Query for an extraction by chapter number.
 
         Args:
             session: SQLAlchemy session.
             chapter_num: The chapter number.
+            book_title: The optional book title.
 
         Returns:
             The extraction model if found, None otherwise.
@@ -169,33 +170,44 @@ class DBStorage:
         stmt = select(ExtractionModel).where(
             ExtractionModel.workspace_id == self._require_workspace_id(),
             ExtractionModel.chapter_num == chapter_num,
+            ExtractionModel.book_title == book_title,
         )
         return self._get_model(session, stmt, ExtractionModel)
 
-    def extraction_exists(self, chapter_num: int) -> bool:
+    def extraction_exists(self, chapter_num: int, book_title: str = "") -> bool:
         """Check if extraction exists.
 
         Args:
             chapter_num: The chapter number.
+            book_title: The optional book title.
 
         Returns:
             True if extraction data exists for the chapter.
         """
         with self._get_session() as session:
-            return self._find_extraction(session, chapter_num) is not None
+            return (
+                self._find_extraction(session, chapter_num, book_title)
+                is not None
+            )
 
     def save_extraction(
-        self, chapter_num: int, data: dict[str, list[str]]
+        self,
+        chapter_num: int,
+        data: dict[str, list[str]],
+        book_title: str = "",
     ) -> None:
         """Save extraction data.
 
         Args:
             chapter_num: The chapter number.
             data: Extraction results.
+            book_title: The optional book title.
         """
         with self._get_session() as session:
-            model = self._find_extraction(session, chapter_num)
-            self._upsert_extraction(session, model, chapter_num, data)
+            model = self._find_extraction(session, chapter_num, book_title)
+            self._upsert_extraction(
+                session, model, chapter_num, data, book_title
+            )
             session.commit()
 
     def _upsert_extraction(
@@ -204,6 +216,7 @@ class DBStorage:
         model: ExtractionModel | None,
         chapter_num: int,
         data: dict[str, list[str]],
+        book_title: str = "",
     ) -> None:
         """Insert or update an extraction record."""
         if model:
@@ -212,15 +225,19 @@ class DBStorage:
         new_model = ExtractionModel(
             workspace_id=self._require_workspace_id(),
             chapter_num=chapter_num,
+            book_title=book_title,
             data=data,
         )
         session.add(new_model)
 
-    def load_extraction(self, chapter_num: int) -> dict[str, list[str]]:
+    def load_extraction(
+        self, chapter_num: int, book_title: str = ""
+    ) -> dict[str, list[str]]:
         """Load extraction data.
 
         Args:
             chapter_num: The chapter number.
+            book_title: The optional book title.
 
         Returns:
             The extraction data dictionary.
@@ -229,14 +246,15 @@ class DBStorage:
             FileNotFoundError: If the extraction data is missing.
         """
         with self._get_session() as session:
-            if model := self._find_extraction(session, chapter_num):
+            if model := self._find_extraction(session, chapter_num, book_title):
                 return {
                     str(k): [str(v) for v in val]
                     for k, val in model.data.items()
                 }
             else:
                 raise FileNotFoundError(
-                    f"Extraction for chapter {chapter_num} not found"
+                    f"Extraction for chapter {chapter_num} "
+                    f"in {book_title} not found"
                 )
 
     def _find_profile(
@@ -245,6 +263,7 @@ class DBStorage:
         chapter_num: int,
         category: str,
         name: str,
+        book_title: str = "",
     ) -> ProfileModel | None:
         """Query for a profile by chapter, category, and name.
 
@@ -253,6 +272,7 @@ class DBStorage:
             chapter_num: The chapter number.
             category: The entity category.
             name: The entity name.
+            book_title: The optional book title.
 
         Returns:
             The profile model if found, None otherwise.
@@ -262,11 +282,12 @@ class DBStorage:
             ProfileModel.chapter_num == chapter_num,
             ProfileModel.category == category,
             ProfileModel.name == name,
+            ProfileModel.book_title == book_title,
         )
         return self._get_model(session, stmt, ProfileModel)
 
     def profile_exists(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> bool:
         """Check if profile exists.
 
@@ -274,18 +295,25 @@ class DBStorage:
             chapter_num: The chapter number.
             category: The entity category.
             name: The entity name.
+            book_title: The optional book title.
 
         Returns:
             True if the profile exists.
         """
         with self._get_session() as session:
             return (
-                self._find_profile(session, chapter_num, category, name)
+                self._find_profile(
+                    session, chapter_num, category, name, book_title
+                )
                 is not None
             )
 
     def filter_cached_profiles(
-        self, chapter_num: int, category: str, names: list[str]
+        self,
+        chapter_num: int,
+        category: str,
+        names: list[str],
+        book_title: str = "",
     ) -> tuple[list[str], list[str]]:
         """Split names into those that are cached and those that are not.
 
@@ -293,6 +321,7 @@ class DBStorage:
             chapter_num: The chapter number.
             category: The entity category.
             names: List of entity names to check.
+            book_title: The optional book title.
 
         Returns:
             A tuple of (cached_names, missing_names).
@@ -306,6 +335,7 @@ class DBStorage:
                 ProfileModel.chapter_num == chapter_num,
                 ProfileModel.category == category,
                 ProfileModel.name.in_(names),
+                ProfileModel.book_title == book_title,
             )
             cached_names = set(session.scalars(stmt).all())
             cached = [n for n in names if n in cached_names]
@@ -323,7 +353,11 @@ class DBStorage:
         """
         with self._get_session() as session:
             model = self._find_profile(
-                session, chapter_num, profile.category, profile.name
+                session,
+                chapter_num,
+                profile.category,
+                profile.name,
+                profile.book_title,
             )
             self._upsert_profile(session, model, chapter_num, profile)
             session.commit()
@@ -355,6 +389,7 @@ class DBStorage:
         new_model = ProfileModel(
             workspace_id=self._require_workspace_id(),
             chapter_num=chapter_num,
+            book_title=profile.book_title,
             category=profile.category,
             name=profile.name,
             data=data,
@@ -362,7 +397,7 @@ class DBStorage:
         session.add(new_model)
 
     def load_profile(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> "models.EntityProfile":
         """Load profile data.
 
@@ -370,6 +405,7 @@ class DBStorage:
             chapter_num: The chapter number.
             category: The entity category.
             name: The entity name.
+            book_title: The optional book title.
 
         Returns:
             The loaded entity profile.
@@ -379,13 +415,13 @@ class DBStorage:
         """
         with self._get_session() as session:
             if model := self._find_profile(
-                session, chapter_num, category, name
+                session, chapter_num, category, name, book_title
             ):
                 return models.EntityProfile.model_validate(model.data)
             else:
                 raise FileNotFoundError(
                     f"Profile '{name}' ({category}) for chapter"
-                    f" {chapter_num} not found"
+                    f" {chapter_num} in {book_title} not found"
                 )
 
     def _find_summary(
@@ -488,7 +524,8 @@ class DBStorage:
         """
         with self._get_session() as session:
             stmt = select(BookModel).where(
-                BookModel.workspace_id == self._require_workspace_id()
+                BookModel.workspace_id == self._require_workspace_id(),
+                BookModel.title == title,
             )
             model = self._get_model(session, stmt, BookModel)
             self._upsert_book(session, model, title, text)
@@ -503,7 +540,6 @@ class DBStorage:
     ) -> None:
         """Insert or update a book record."""
         if model:
-            model.title = title
             model.text = text
             return
         new_model = BookModel(

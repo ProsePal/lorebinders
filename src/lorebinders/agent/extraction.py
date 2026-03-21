@@ -79,6 +79,7 @@ async def _perform_extraction(
 
 async def _extract_chapter(
     chapter: models.Chapter,
+    book_title: str,
     agent: Agent[models.AgentDeps, models.ExtractionResult],
     deps: models.AgentDeps,
     categories: list[str],
@@ -94,6 +95,7 @@ async def _extract_chapter(
 
     Args:
         chapter: The chapter model.
+        book_title: The book title.
         agent: The AI agent.
         deps: Agent dependencies.
         categories: Categories to extract.
@@ -110,14 +112,16 @@ async def _extract_chapter(
     """
     _report_extraction_progress(progress, chapter, idx, total)
 
-    if storage.extraction_exists(chapter.number):
+    if storage.extraction_exists(chapter.number, book_title):
         logger.info(f"Loading cached extraction for chapter {chapter.number}")
-        return chapter.number, storage.load_extraction(chapter.number)
+        return chapter.number, storage.load_extraction(
+            chapter.number, book_title
+        )
 
     result = await _perform_extraction(
         chapter, agent, deps, categories, config, semaphore, on_observe
     )
-    storage.save_extraction(chapter.number, result)
+    storage.save_extraction(chapter.number, result, book_title)
     return chapter.number, result
 
 
@@ -155,6 +159,7 @@ async def extract_book(
         task = asyncio.create_task(
             _extract_chapter(
                 chap,
+                book.title,
                 agent,
                 deps,
                 categories,

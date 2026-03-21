@@ -1,6 +1,6 @@
 import pytest
 
-from lorebinders.models import Binder, EntityTraits
+from lorebinders.models import Binder, ChapterAppearances, EntityTraits
 from lorebinders.refinement.cleaning import (
     clean_binder,
     clean_str,
@@ -67,23 +67,29 @@ def test_clean_binder_replaces_narrator() -> None:
     """Verify narrator placeholders are replaced in names and traits."""
     binder = Binder()
     binder.add_appearance(
-        "Characters", "I", 1, {"Description": "The narrator is tall."}
+        "Characters", "I", 1, "Book 1", {"Description": "The narrator is tall."}
     )
 
     cleaned = clean_binder(binder, "Jane Doe")
 
     assert "Jane Doe" in cleaned.categories["Characters"].entities
     ent = cleaned.categories["Characters"].entities["Jane Doe"]
-    assert ent.appearances[1].traits["Description"] == "Jane Doe is tall."
+    book_app = ent.appearances["Book 1"]
+    assert isinstance(book_app, ChapterAppearances)
+    assert book_app.chapters[1].traits["Description"] == "Jane Doe is tall."
 
 
 def test_clean_binder_integrates_steps() -> None:
     """Verify the full cleaning pipeline logic."""
     binder = Binder()
-    binder.add_appearance("Characters", "Mr. Smith", 1, {"Trait": "A"})
-    binder.add_appearance("Characters", "Smith", 1, {"Trait": "B"})
-    binder.add_appearance("Characters", "I", 1, {"Trait": "C"})
-    binder.add_appearance("Locations", "Cave (Deep)", 1, {"Trait": "Dark"})
+    binder.add_appearance(
+        "Characters", "Mr. Smith", 1, "Book 1", {"Trait": "A"}
+    )
+    binder.add_appearance("Characters", "Smith", 1, "Book 1", {"Trait": "B"})
+    binder.add_appearance("Characters", "I", 1, "Book 1", {"Trait": "C"})
+    binder.add_appearance(
+        "Locations", "Cave (Deep)", 1, "Book 1", {"Trait": "Dark"}
+    )
 
     cleaned = clean_binder(binder, "Jane")
 

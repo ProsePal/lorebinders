@@ -11,19 +11,26 @@ def test_generate_pdf_report_aggregated(tmp_path: Path) -> None:
 
     binder = Binder()
     binder.add_appearance(
-        "Characters", "Hero", 1, {"Physique": "Lean", "Personality": "Brave"}
+        "Characters",
+        "Hero",
+        1,
+        "Book 1",
+        {"Physique": "Lean", "Personality": "Brave"},
     )
     binder.add_appearance(
         "Characters",
         "Hero",
         2,
+        "Book 1",
         {"Physique": "Muscular", "Personality": "Brave"},
     )
     binder.categories["Characters"].entities[
         "Hero"
     ].summary = "The hero is strong."
 
-    binder.add_appearance("Settings", "Castle", 1, {"Atmosphere": "Dark"})
+    binder.add_appearance(
+        "Settings", "Castle", 1, "Book 1", {"Atmosphere": "Dark"}
+    )
 
     generate_pdf_report(binder, output_path)
 
@@ -47,9 +54,9 @@ def test_generate_pdf_report_aggregated(tmp_path: Path) -> None:
     assert "Personality" in text
     assert "Atmosphere" in text
 
-    assert "Chapter 1: Lean" in text
-    assert "Chapter 2: Muscular" in text
-    assert "Chapter 1: Dark" in text
+    assert "Book 1, Chapter 1: Lean" in text
+    assert "Book 1, Chapter 2: Muscular" in text
+    assert "Book 1, Chapter 1: Dark" in text
 
-    assert "Chapter 1: Brave" in text
-    assert "Chapter 2: Brave" in text
+    assert "Book 1, Chapter 1: Brave" in text
+    assert "Book 1, Chapter 2: Brave" in text

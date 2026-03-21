@@ -3,9 +3,12 @@
 import logging
 
 from lorebinders.models import (
+    AppearanceValue,
     Binder,
     CategoryRecord,
+    ChapterAppearances,
     EntityRecord,
+    SingleAppearance,
 )
 from lorebinders.refinement.normalization import clean_entity_name
 from lorebinders.refinement.patterns import NARRATOR_PATTERN
@@ -98,10 +101,19 @@ def _process_entity(
         if NARRATOR_PATTERN.match(entity.name):
             entity.name = narrator_name
 
+        def _replace_in_appearance(app: AppearanceValue) -> None:
+            if isinstance(app, SingleAppearance):
+                app.appearance.traits = _replace_narrator_text(
+                    app.appearance.traits, narrator_name
+                )
+            elif isinstance(app, ChapterAppearances):
+                for ch_app in app.chapters.values():
+                    ch_app.traits = _replace_narrator_text(
+                        ch_app.traits, narrator_name
+                    )
+
         for appearance in entity.appearances.values():
-            appearance.traits = _replace_narrator_text(
-                appearance.traits, narrator_name
-            )
+            _replace_in_appearance(appearance)
 
 
 def _process_category(

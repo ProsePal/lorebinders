@@ -5,39 +5,41 @@ from lorebinders.cli.configuration import build_run_configuration
 
 def test_build_run_configuration_defaults() -> None:
     config = build_run_configuration(
-        book_path=Path("test.epub"),
+        books=["test.epub"],
+        series_title="Series",
         author_name="Author",
-        book_title="Title",
         narrator_name=None,
         is_1st_person=False,
         traits=None,
         categories=None,
     )
 
-    assert config.book_path == Path("test.epub")
+    assert config.books[0].path == Path("test.epub")
+    assert config.series_title == "Series"
     assert config.custom_traits == {}
     assert config.custom_categories == []
 
 
 def test_build_run_configuration_flat_traits() -> None:
     config = build_run_configuration(
-        book_path=Path("test.epub"),
+        books=["test.epub:Title"],
+        series_title="Series",
         author_name="Author",
-        book_title="Title",
         narrator_name=None,
         is_1st_person=False,
         traits=["Trait1", "Trait2"],
         categories=None,
     )
 
+    assert config.books[0].title == "Title"
     assert config.custom_traits == {"Characters": ["Trait1", "Trait2"]}
 
 
 def test_build_run_configuration_namespaced_traits() -> None:
     config = build_run_configuration(
-        book_path=Path("test.epub"),
+        books=["test.epub"],
+        series_title="Series",
         author_name="Author",
-        book_title="Title",
         narrator_name=None,
         is_1st_person=False,
         traits=["Trait1", "Locations:Atmosphere", "Beasts:Ferocity"],

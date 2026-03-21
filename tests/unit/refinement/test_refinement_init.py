@@ -1,6 +1,6 @@
 """Tests for the refinement pipeline entry point."""
 
-from lorebinders.models import Binder
+from lorebinders.models import Binder, ChapterAppearances
 from lorebinders.refinement import refine_binder
 
 
@@ -10,12 +10,14 @@ def _make_binder_with_data() -> Binder:
         category="Characters",
         name="Alice",
         chapter=1,
+        book_title="Book 1",
         traits={"Role": "Hero", "Age": "None Found"},
     )
     binder.add_appearance(
         category="Characters",
         name="Alice",
         chapter=1,
+        book_title="Book 1",
         traits={"Role": "Hero", "Trait": "Brave"},
     )
     return binder
@@ -32,8 +34,10 @@ def test_refine_binder_cleans_none_found_traits() -> None:
     result = refine_binder(binder)
     alice = result.categories["Characters"].entities.get("Alice")
     assert alice is not None
-    for appearance in alice.appearances.values():
-        assert "Age" not in appearance.traits
+    for book_app in alice.appearances.values():
+        if isinstance(book_app, ChapterAppearances):
+            for appearance in book_app.chapters.values():
+                assert "Age" not in appearance.traits
 
 
 def test_refine_binder_with_narrator_name() -> None:
@@ -42,6 +46,7 @@ def test_refine_binder_with_narrator_name() -> None:
         category="Characters",
         name="I",
         chapter=1,
+        book_title="Book 1",
         traits={"Role": "Narrator"},
     )
     result = refine_binder(binder, narrator_name="Jane")

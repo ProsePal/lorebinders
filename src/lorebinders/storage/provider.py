@@ -25,11 +25,12 @@ class StorageProvider(Protocol):
         """
         ...
 
-    def extraction_exists(self, chapter_num: int) -> bool:
+    def extraction_exists(self, chapter_num: int, book_title: str = "") -> bool:
         """Check if extraction exists.
 
         Args:
             chapter_num: The chapter number.
+            book_title: The book title.
 
         Returns:
             True if it exists.
@@ -40,20 +41,25 @@ class StorageProvider(Protocol):
         self,
         chapter_num: int,
         data: dict[str, list[str]],
+        book_title: str = "",
     ) -> None:
         """Save extraction data.
 
         Args:
             chapter_num: The chapter number.
             data: The extraction data dictionary.
+            book_title: The book title.
         """
         ...
 
-    def load_extraction(self, chapter_num: int) -> dict[str, list[str]]:
+    def load_extraction(
+        self, chapter_num: int, book_title: str = ""
+    ) -> dict[str, list[str]]:
         """Load extraction data.
 
         Args:
             chapter_num (int): The chapter number of the extraction.
+            book_title: The book title.
 
         Returns:
             The extraction data dictionary.
@@ -61,7 +67,7 @@ class StorageProvider(Protocol):
         ...
 
     def profile_exists(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> bool:
         """Check if profile exists.
 
@@ -69,6 +75,7 @@ class StorageProvider(Protocol):
             chapter_num: The chapter number.
             category: The entity category.
             name: The entity name.
+            book_title: The book title.
 
         Returns:
             True if it exists.
@@ -76,7 +83,11 @@ class StorageProvider(Protocol):
         ...
 
     def filter_cached_profiles(
-        self, chapter_num: int, category: str, names: list[str]
+        self,
+        chapter_num: int,
+        category: str,
+        names: list[str],
+        book_title: str = "",
     ) -> tuple[list[str], list[str]]:
         """Split names into those that are cached and those that are not.
 
@@ -84,6 +95,7 @@ class StorageProvider(Protocol):
             chapter_num: The chapter number.
             category: The entity category.
             names: List of entity names to check.
+            book_title: The book title.
 
         Returns:
             A tuple of (cached_names, missing_names).
@@ -104,7 +116,7 @@ class StorageProvider(Protocol):
         ...
 
     def load_profile(
-        self, chapter_num: int, category: str, name: str
+        self, chapter_num: int, category: str, name: str, book_title: str = ""
     ) -> models.EntityProfile:
         """Load profile data.
 
@@ -112,6 +124,7 @@ class StorageProvider(Protocol):
             chapter_num: The chapter number.
             category: The entity category.
             name: The entity name.
+            book_title: The book title.
 
         Returns:
             The entity profile model.

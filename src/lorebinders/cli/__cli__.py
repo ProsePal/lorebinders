@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 from rich.console import Console
@@ -8,79 +8,61 @@ from rich.progress import (
     BarColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TextColumn,
     TimeRemainingColumn,
 )
 
-from lorebinders import app
+from lorebinders import app, models
 from lorebinders.cli.configuration import build_run_configuration
 from lorebinders.logging import configure_logging
-from lorebinders.models import ProgressUpdate
 
-cli = typer.Typer(no_args_is_help=True)
 console = Console()
-logger = logging.getLogger("lorebinders.cli")
+logger = logging.getLogger(__name__)
 
 
 class ProgressHandler:
-    """Handles rich progress updates from the application."""
+    """Rich-based progress handler for the application."""
 
     def __init__(self, progress: Progress) -> None:
-        """Initialise tasks for each pipeline stage."""
+        """Initialize the handler with a Rich Progress instance."""
         self.progress = progress
-        self.extraction_task = progress.add_task("Extracting...", total=None)
-        self.analysis_task = progress.add_task(
-            "Analyzing...", total=None, visible=False
-        )
-        self.summarization_task = progress.add_task(
-            "Summarizing...", total=None, visible=False
-        )
+        self.tasks: dict[str, TaskID] = {}
 
-    def __call__(self, update: ProgressUpdate) -> None:
-        """Route a progress update to the correct rich task."""
-        match update.stage:
-            case "extraction":
-                self.progress.update(
-                    self.extraction_task,
-                    completed=update.current,
-                    total=update.total,
-                    description=update.message,
-                )
-            case "analysis":
-                self.progress.update(
-                    self.analysis_task,
-                    visible=True,
-                    completed=update.current,
-                    total=update.total,
-                    description=update.message,
-                )
-            case "summarization":
-                self.progress.update(
-                    self.summarization_task,
-                    visible=True,
-                    completed=update.current,
-                    total=update.total,
-                    description=update.message,
-                )
+    def __call__(self, update: models.ProgressUpdate) -> None:
+        """Process a progress update."""
+        if update.stage not in self.tasks:
+            self.tasks[update.stage] = self.progress.add_task(
+                f"[cyan]{update.stage.capitalize()}...", total=update.total
+            )
+
+        task_id = self.tasks[update.stage]
+        self.progress.update(
+            task_id, completed=update.current, description=update.message
+        )
 
 
 def _setup_logging(log_file: Path | None, verbose: bool) -> None:
-    if log_file or verbose:
-        configure_logging(log_file)
-    if verbose:
-        logging.getLogger("lorebinders").setLevel(logging.DEBUG)
+    """Configure application logging."""
+    configure_logging(log_file, verbose)
+
+
+cli = typer.Typer(help="LoreBinders: Create a Story Bible from your book.")
 
 
 @cli.command()
 def main(
-    book_path: Annotated[
-        Path,
-        typer.Argument(
-            exists=True, file_okay=True, dir_okay=False, readable=True
-        ),
+    series_title: Annotated[
+        str, typer.Option("--series-title", help="Overall series title")
     ],
     author_name: Annotated[str, typer.Option("--author", help="Author's name")],
-    book_title: Annotated[str, typer.Option("--title", help="Book title")],
+    books: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--book",
+            help="Path to book and optional title (e.g. 'path/to/book.txt')",
+        ),
+    ] = None,
     narrator_name: Annotated[
         str | None,
         typer.Option(help="Name of the narrator (if using 1st person)"),
@@ -88,6 +70,13 @@ def main(
     is_1st_person: Annotated[
         bool, typer.Option(help="Whether the book is written in 1st person")
     ] = False,
+    tracking: Annotated[
+        Literal["nested", "flat"],
+        typer.Option(
+            "--tracking",
+            help="Appearance tracking method: 'nested' or 'flat'",
+        ),
+    ] = "nested",
     traits: Annotated[
         list[str] | None, typer.Option("--trait", help="Custom trait to track")
     ] = None,
@@ -102,15 +91,32 @@ def main(
         bool, typer.Option("--verbose", help="Enable verbose logging")
     ] = False,
 ) -> None:
-    """LoreBinders: Create a Story Bible from your book."""
+    """LoreBinders: Create a Story Bible from your book.
+
+    Raises:
+        typer.Exit: If validation fails.
+    """
+    if not books:
+        console.print(
+            "[bold red]Error:[/bold red] At least one --book must be provided"
+        )
+        raise typer.Exit(1)
+
+    if tracking not in ("nested", "flat"):
+        console.print(
+            "[bold red]Error:[/bold red] tracking must be 'nested' or 'flat'"
+        )
+        raise typer.Exit(1)
+
     config = build_run_configuration(
-        book_path,
+        books,
+        series_title,
         author_name,
-        book_title,
         narrator_name,
         is_1st_person,
         traits,
         categories,
+        tracking=tracking,
     )
     _setup_logging(log_file, verbose)
 

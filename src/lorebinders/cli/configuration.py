@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
-from lorebinders.models import NarratorConfig, RunConfiguration
+from lorebinders.models import BookInput, NarratorConfig, RunConfiguration
 
 
 def _parse_trait(trait_str: str) -> tuple[str, str]:
@@ -22,14 +23,28 @@ def _add_trait(traits_map: dict[str, list[str]], cat: str, val: str) -> None:
     traits_map[cat].append(val)
 
 
+def _parse_book(book_str: str) -> BookInput:
+    """Parse a book string into a BookInput model.
+
+    Returns:
+        A BookInput instance with path and title.
+    """
+    if ":" in book_str:
+        path_str, title = book_str.split(":", 1)
+        return BookInput(path=Path(path_str.strip()), title=title.strip())
+    path = Path(book_str.strip())
+    return BookInput(path=path, title=path.stem)
+
+
 def build_run_configuration(
-    book_path: Path,
+    books: list[str],
+    series_title: str,
     author_name: str,
-    book_title: str,
     narrator_name: str | None,
     is_1st_person: bool,
     traits: list[str] | None,
     categories: list[str] | None,
+    tracking: Literal["nested", "flat"] = "nested",
 ) -> RunConfiguration:
     """Build a valid RunConfiguration from raw CLI arguments.
 
@@ -49,11 +64,14 @@ def build_run_configuration(
             cat, val = _parse_trait(t)
             _add_trait(custom_traits, cat, val)
 
+    parsed_books = [_parse_book(b) for b in books]
+
     return RunConfiguration(
-        book_path=book_path,
+        series_title=series_title,
+        books=parsed_books,
         author_name=author_name,
-        book_title=book_title,
         narrator_config=narrator_config,
+        appearance_tracking=tracking,
         custom_traits=custom_traits,
         custom_categories=custom_categories,
     )

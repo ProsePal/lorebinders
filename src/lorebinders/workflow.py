@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 from pydantic_ai import Agent
 
@@ -88,11 +88,13 @@ def merge_traits(
 
 def _aggregate_to_binder(
     profiles: list[models.EntityProfile],
+    tracking: Literal["nested", "flat"] = "nested",
 ) -> models.Binder:
     """Aggregate profiles into the Binder model, cleaning traits.
 
     Args:
         profiles: List of analyzed entity profiles.
+        tracking: Tracking structure preference for appearances.
 
     Returns:
         A Binder model containing aggregated and cleaned entity profiles.
@@ -104,7 +106,9 @@ def _aggregate_to_binder(
                 category=p.category,
                 name=p.name,
                 chapter=p.chapter_number,
+                book_title=p.book_title,
                 traits=cleaned,
+                tracking=tracking,
             )
     return binder
 
@@ -143,51 +147,62 @@ async def build_binder(
 
     traits = merge_traits(settings, config)
     storage = get_storage(provider)
-    storage.set_workspace(config.author_name, config.book_title)
+    storage.set_workspace(config.author_name, config.series_title)
 
-    models.emit_observation(
-        on_observe,
-        models.ObservationType.STAGE_STARTED,
-        "ingestion",
-        f"Ingesting {config.book_path.name}",
-    )
-    text = await asyncio.to_thread(convert_to_text, config.book_path)
-    await asyncio.to_thread(storage.save_book, config.book_title, text)
-    book = ingest(text, config.book_path.stem)
+    all_profiles: list[models.EntityProfile] = []
 
-    models.emit_observation(
-        on_observe,
-        models.ObservationType.STAGE_STARTED,
-        "extraction",
-        "Starting extraction",
-        {"total_chapters": len(book.chapters)},
-    )
-    raw = await extract_book(
-        book,
-        ext_agent,
-        deps,
-        list(traits.keys()),
-        config,
-        storage,
-        progress,
-        on_observe,
-    )
+    for book_input in config.books:
+        models.emit_observation(
+            on_observe,
+            models.ObservationType.STAGE_STARTED,
+            "ingestion",
+            f"Ingesting {book_input.path.name}",
+        )
+        text = await asyncio.to_thread(convert_to_text, book_input.path)
+        await asyncio.to_thread(storage.save_book, book_input.title, text)
+        book = ingest(text, book_input.title)
 
-    narrator = config.narrator_config.name
-    sorted_ext = sort_extractions(raw, narrator)
+        models.emit_observation(
+            on_observe,
+            models.ObservationType.STAGE_STARTED,
+            "extraction",
+            f"Starting extraction for {book_input.title}",
+            {"total_chapters": len(book.chapters)},
+        )
+        raw = await extract_book(
+            book,
+            ext_agent,
+            deps,
+            list(traits.keys()),
+            config,
+            storage,
+            progress,
+            on_observe,
+        )
 
-    models.emit_observation(
-        on_observe,
-        models.ObservationType.STAGE_STARTED,
-        "analysis",
-        "Starting analysis",
-        {"total_batches": sum(len(e) for e in sorted_ext.values())}
-        if on_observe
-        else None,
-    )
-    profiles = await analyze_entities(
-        sorted_ext, book, ana_agent, deps, traits, storage, progress, on_observe
-    )
+        narrator = config.narrator_config.name
+        sorted_ext = sort_extractions(raw, narrator)
+
+        models.emit_observation(
+            on_observe,
+            models.ObservationType.STAGE_STARTED,
+            "analysis",
+            f"Starting analysis for {book_input.title}",
+            {"total_batches": sum(len(e) for e in sorted_ext.values())}
+            if on_observe
+            else None,
+        )
+        profiles = await analyze_entities(
+            sorted_ext,
+            book,
+            ana_agent,
+            deps,
+            traits,
+            storage,
+            progress,
+            on_observe,
+        )
+        all_profiles.extend(profiles)
 
     models.emit_observation(
         on_observe,
@@ -195,7 +210,9 @@ async def build_binder(
         "refinement",
         "Refining binder data",
     )
-    raw_binder = _aggregate_to_binder(profiles)
+    raw_binder = _aggregate_to_binder(
+        all_profiles, tracking=config.appearance_tracking
+    )
     binder = refine_binder(raw_binder, config.narrator_config.name)
 
     total_ent = sum(len(c.entities) for c in binder.categories.values())
@@ -210,7 +227,7 @@ async def build_binder(
         binder, storage, sum_agent, deps, progress, on_observe
     )
 
-    safe_title = sanitize_filename(config.book_title)
+    safe_title = sanitize_filename(config.series_title)
     output_dir = storage.path
     output_file = output_dir / f"{safe_title}_story_bible.pdf"
 

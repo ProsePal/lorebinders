@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lorebinders import models
+from lorebinders.models import ChapterAppearances
+from lorebinders.settings import get_settings
 from lorebinders.workflow import (
     _aggregate_to_binder,
     build_binder,
@@ -16,8 +18,6 @@ from lorebinders.workflow import (
 @pytest.fixture
 def temp_workspace(tmp_path: Path) -> Path:
     """Fixture providing a temporary workspace directory."""
-    from lorebinders.settings import get_settings
-
     ws = tmp_path / "work"
     ws.mkdir()
     os.environ["LOREBINDERS_WORKSPACE_BASE_PATH"] = str(ws)
@@ -37,9 +37,9 @@ def book_file(tmp_path: Path) -> Path:
 def run_config(book_file: Path) -> models.RunConfiguration:
     """Fixture providing a standard run configuration."""
     return models.RunConfiguration(
-        book_path=book_file,
+        series_title="Test Series",
+        books=[models.BookInput(path=book_file, title="Test Book")],
         author_name="Test Author",
-        book_title="Test Book",
         narrator_config=models.NarratorConfig(),
     )
 
@@ -61,22 +61,26 @@ def test_aggregate_to_binder_structure() -> None:
             name="Alice",
             category="Characters",
             chapter_number=1,
+            book_title="Book 1",
             traits={"Role": "Hero"},
         ),
         models.EntityProfile(
             name="Alice",
             category="Characters",
             chapter_number=2,
+            book_title="Book 1",
             traits={"Age": "20"},
         ),
     ]
 
-    binder = _aggregate_to_binder(profiles)
+    binder = _aggregate_to_binder(profiles, tracking="nested")
 
     assert "Characters" in binder.categories
     alice = binder.categories["Characters"].entities["Alice"]
-    assert alice.appearances[1].traits == {"Role": "Hero"}
-    assert alice.appearances[2].traits == {"Age": "20"}
+    book_app = alice.appearances["Book 1"]
+    assert isinstance(book_app, ChapterAppearances)
+    assert book_app.chapters[1].traits == {"Role": "Hero"}
+    assert book_app.chapters[2].traits == {"Age": "20"}
 
 
 @pytest.mark.anyio
@@ -91,12 +95,13 @@ async def test_build_binder_orchestration(
             name="Alice",
             category="Characters",
             chapter_number=1,
+            book_title="Test Book",
             traits={"Role": "Hero"},
         )
     ]
 
     fake_storage = MagicMock()
-    fake_storage.path = temp_workspace / "Test_Author" / "Test_Book"
+    fake_storage.path = temp_workspace / "Test_Author" / "Test_Series"
     fake_storage.extraction_exists.return_value = False
     fake_storage.profile_exists.return_value = False
 
@@ -127,15 +132,15 @@ async def test_build_binder_orchestration(
     ):
         result = await build_binder(run_config)
 
-    mock_convert.assert_called_once_with(run_config.book_path)
+    mock_convert.assert_called_once_with(run_config.books[0].path)
     mock_ingest.assert_called_once_with(
-        "Chapter 1\nAlice content", run_config.book_path.stem
+        "Chapter 1\nAlice content", run_config.books[0].title
     )
     mock_report.assert_called_once()
     assert (
         result
         == temp_workspace
         / "Test_Author"
-        / "Test_Book"
-        / "Test_Book_story_bible.pdf"
+        / "Test_Series"
+        / "Test_Series_story_bible.pdf"
     )

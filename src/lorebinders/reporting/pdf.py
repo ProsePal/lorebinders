@@ -13,12 +13,17 @@ from reportlab.platypus import (
     Spacer,
 )
 
-from lorebinders.models import Binder, EntityRecord
+from lorebinders.models import (
+    Binder,
+    ChapterAppearances,
+    EntityRecord,
+    SingleAppearance,
+)
 from lorebinders.reporting.styles import get_document_styles
 
 
 def _create_occurrence_item(
-    chap_num: int, val: str | list[str], styles: StyleSheet1
+    location_key: str, val: str | list[str], styles: StyleSheet1
 ) -> Paragraph:
     """Create a list item for a trait occurrence.
 
@@ -26,21 +31,21 @@ def _create_occurrence_item(
         A Paragraph representing the trait occurrence.
     """
     val_str = ", ".join(val) if isinstance(val, list) else str(val)
-    text = f"Chapter {chap_num}: {val_str}"
+    text = f"{location_key}: {val_str}"
     return Paragraph(text, styles["Normal"])
 
 
 def _add_trait_section(
     story: list[Flowable],
     trait_name: str,
-    occurrences: dict[int, str | list[str]],
+    occurrences: dict[str, str | list[str]],
     styles: StyleSheet1,
 ) -> None:
     """Add a single trait and its occurrences to the report."""
     story.append(Paragraph(f"<b>{trait_name}</b>", styles["Normal"]))
     list_items: list[Paragraph] = [
-        _create_occurrence_item(ch, occurrences[ch], styles)
-        for ch in sorted(occurrences.keys())
+        _create_occurrence_item(k, occurrences[k], styles)
+        for k in sorted(occurrences.keys(), key=str)
     ]
 
     story.append(
@@ -54,26 +59,42 @@ def _add_trait_section(
 
 
 def _add_traits_to_map(
-    trait_map: dict[str, dict[int, str | list[str]]],
-    chap_num: int,
+    trait_map: dict[str, dict[str, str | list[str]]],
+    key: str,
     traits: dict[str, str | list[str]],
 ) -> None:
     """Helper to add traits from one chapter to the map."""
     for trait_name, trait_val in traits.items():
-        trait_map[trait_name][chap_num] = trait_val
+        trait_map[trait_name][key] = trait_val
 
 
 def _collect_trait_map(
     entity: EntityRecord,
-) -> dict[str, dict[int, str | list[str]]]:
+) -> dict[str, dict[str, str | list[str]]]:
     """Helper to group traits by name across chapters.
 
     Returns:
-        A mapping of trait name to (chapter number -> value).
+        A mapping of trait name to (location -> value).
     """
-    trait_map: defaultdict[str, dict[int, str | list[str]]] = defaultdict(dict)
-    for chap_num, appearance in entity.appearances.items():
-        _add_traits_to_map(trait_map, chap_num, appearance.traits)
+    trait_map: defaultdict[str, dict[str, str | list[str]]] = defaultdict(dict)
+
+    if not entity.appearances:
+        return dict(trait_map)
+
+    first_val = next(iter(entity.appearances.values()))
+    if isinstance(first_val, ChapterAppearances):
+        for book_title, book_app in entity.appearances.items():
+            if not isinstance(book_app, ChapterAppearances):
+                continue
+            for chap_num, appearance in book_app.chapters.items():
+                key = f"{book_title}, Chapter {chap_num}"
+                _add_traits_to_map(trait_map, key, appearance.traits)
+    else:
+        for k, appearance_val in entity.appearances.items():
+            if not isinstance(appearance_val, SingleAppearance):
+                continue
+            _add_traits_to_map(trait_map, k, appearance_val.appearance.traits)
+
     return dict(trait_map)
 
 

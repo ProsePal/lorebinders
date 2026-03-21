@@ -3,9 +3,12 @@
 from itertools import combinations
 
 from lorebinders.models import (
+    AppearanceValue,
     Binder,
     CategoryRecord,
+    ChapterAppearances,
     EntityRecord,
+    SingleAppearance,
 )
 from lorebinders.refinement.normalization import (
     TITLES,
@@ -97,15 +100,39 @@ def prioritize_keys(key1: str, key2: str) -> tuple[str, str]:
     return (key2, key1) if len(key1) >= len(key2) else (key1, key2)
 
 
+def _merge_appearances(
+    target: dict[str, AppearanceValue],
+    source: dict[str, AppearanceValue],
+) -> None:
+    """Merge source appearance dictionary into target in-place."""
+    for key, value in source.items():
+        if key in target:
+            t = target[key]
+            if isinstance(value, SingleAppearance) and isinstance(
+                t, SingleAppearance
+            ):
+                t.appearance.traits = merge_values(
+                    t.appearance.traits, value.appearance.traits
+                )
+            elif isinstance(value, ChapterAppearances) and isinstance(
+                t, ChapterAppearances
+            ):
+                for ch_num, ch_app in value.chapters.items():
+                    if ch_num in t.chapters:
+                        t.chapters[ch_num].traits = merge_values(
+                            t.chapters[ch_num].traits, ch_app.traits
+                        )
+                    else:
+                        t.chapters[ch_num] = ch_app
+            else:
+                target[key] = value
+        else:
+            target[key] = value
+
+
 def _merge_entities(target: EntityRecord, source: EntityRecord) -> None:
     """Merge traits and summaries from source entity into target entity."""
-    for chap_num, appearance in source.appearances.items():
-        if chap_num in target.appearances:
-            target.appearances[chap_num].traits = merge_values(
-                target.appearances[chap_num].traits, appearance.traits
-            )
-        else:
-            target.appearances[chap_num] = appearance
+    _merge_appearances(target.appearances, source.appearances)
 
     if source.summary:
         if not target.summary:

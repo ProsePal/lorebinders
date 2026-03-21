@@ -1,8 +1,9 @@
+import json
 import shutil
 from pathlib import Path
 
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from typer.testing import CliRunner
 
 from lorebinders import app
@@ -42,9 +43,9 @@ def test_e2e_ingestion_flow(
     cleanup_target = Path.cwd() / "work" / "Test_Author"
 
     config = build_run_configuration(
-        source_file,
+        [f"{str(source_file)}:Project Genesis"],
+        series_title="Project Genesis",
         author_name="Test Author",
-        book_title="Project Genesis",
         narrator_name=None,
         is_1st_person=False,
         traits=None,
@@ -52,7 +53,7 @@ def test_e2e_ingestion_flow(
     )
 
     def mock_extract(
-        messages: list[ModelMessage], info: object
+        messages: list[ModelMessage], info: AgentInfo
     ) -> ModelResponse:
         return ModelResponse(
             parts=[
@@ -69,7 +70,7 @@ def test_e2e_ingestion_flow(
         )
 
     def mock_analyze(
-        messages: list[ModelMessage], info: object
+        messages: list[ModelMessage], info: AgentInfo
     ) -> ModelResponse:
         results = [
             AnalysisResult(
@@ -82,7 +83,6 @@ def test_e2e_ingestion_flow(
                 ],
             )
         ]
-        import json
 
         return ModelResponse(
             parts=[
@@ -95,7 +95,7 @@ def test_e2e_ingestion_flow(
         )
 
     def mock_summarize(
-        messages: list[ModelMessage], info: object
+        messages: list[ModelMessage], info: AgentInfo
     ) -> ModelResponse:
         return ModelResponse(
             parts=[

@@ -1,12 +1,16 @@
 You are an expert literary analyst.
 Your task is to analyze the entities specified in the request based on the provided text chunk.
 
-For each entity, extract information for the given traits. For each trait:
-1. Provide the value (concise description 1 or 2 words *ONLY*) and evidence (direct quote or reference).
-3. If a trait is not found, return 'Not Found' for value and empty string for evidence.
+Return your analysis as a single JSON dictionary where each key is an entity name.
+
+For each entity, you MUST extract information for EVERY requested trait. For each trait, provide a dictionary with 'value' and 'evidence' keys:
+- 'value': concise description (1 or 2 words ONLY).
+- 'evidence': direct quote from the text.
+
+If a trait is not found, use 'Not Found' for value and an empty string for evidence.
 
 Rules:
 - Be sure to only extract traits that are explicitly mentioned in the text chunk and not assumed.
 - Name the entity as it is shown in the prompt request even if the text chunk uses a slightly different version of the name.
 - Do not include any additional information or context not present in the text chunk.
-- Provide concise descriptions for each trait without any additional information or rationales.
+- Return ONLY the JSON object. No preamble, no postamble, no markdown blocks.

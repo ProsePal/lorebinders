@@ -2,7 +2,7 @@ import json
 
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from lorebinders.agent.factory import (
     build_analysis_user_prompt,
@@ -22,7 +22,7 @@ def mock_prompt_loader(filename: str) -> str:
 @pytest.mark.anyio
 async def test_agents_flow() -> None:
     def mock_extract_call(
-        messages: list[ModelMessage], info: object
+        messages: list[ModelMessage], info: AgentInfo
     ) -> ModelResponse:
         return ModelResponse(
             parts=[
@@ -45,7 +45,7 @@ async def test_agents_flow() -> None:
         )
 
     def mock_analyze_call(
-        messages: list[ModelMessage], info: object
+        messages: list[ModelMessage], info: AgentInfo
     ) -> ModelResponse:
         result = [
             {

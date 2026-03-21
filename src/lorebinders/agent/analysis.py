@@ -31,6 +31,7 @@ def _get_target_names(
     ch_num: int,
     category: str,
     entities: list[str],
+    book_title: str = "",
 ) -> tuple[list[str], list[str]]:
     """Helper to split entities into cached and to-run.
 
@@ -39,16 +40,20 @@ def _get_target_names(
         ch_num: The chapter number.
         category: The entity category.
         entities: List of entity names.
+        book_title: The book title.
 
     Returns:
         A tuple of (cached_names, run_names).
     """
-    return storage.filter_cached_profiles(ch_num, category, entities)
+    return storage.filter_cached_profiles(
+        ch_num, category, entities, book_title
+    )
 
 
 async def _analyze_batch(
     target_categories: list[models.CategoryTarget],
     chapter: models.Chapter,
+    book_title: str,
     agent: _AnalysisAgent,
     deps: models.AgentDeps,
     effective_traits: dict[str, list[str]],
@@ -60,6 +65,7 @@ async def _analyze_batch(
     Args:
         target_categories: Categories and entities to analyze.
         chapter: The chapter model.
+        book_title: Title of the book.
         agent: The AI agent for analysis.
         deps: Agent dependencies.
         effective_traits: Trait mapping for categories.
@@ -75,10 +81,11 @@ async def _analyze_batch(
     for cat_target in target_categories:
         cat = cat_target.name
         cached, run = _get_target_names(
-            storage, chapter.number, cat, cat_target.entities
+            storage, chapter.number, cat, cat_target.entities, book_title
         )
         profiles.extend(
-            storage.load_profile(chapter.number, cat, n) for n in cached
+            storage.load_profile(chapter.number, cat, n, book_title)
+            for n in cached
         )
         _prepare_run_targets(to_analyze, cat, run, effective_traits)
 
@@ -92,7 +99,7 @@ async def _analyze_batch(
         agent, prompt, deps=deps, on_observe=on_observe
     )
     _process_analysis_results(
-        result, profiles, chapter.number, storage, deps.settings
+        result, profiles, chapter.number, book_title, storage, deps.settings
     )
     return profiles
 
@@ -115,6 +122,7 @@ def _process_analysis_results(
     results: list[models.AnalysisResult],
     profiles: list[models.EntityProfile],
     ch_num: int,
+    book_title: str,
     storage: StorageProvider,
     settings: "Settings",
 ) -> None:
@@ -126,6 +134,7 @@ def _process_analysis_results(
             name=r.entity_name,
             category=r.category,
             chapter_number=ch_num,
+            book_title=book_title,
             traits=profile_traits,
             confidence_score=settings.confidence_threshold,
         )
@@ -155,6 +164,7 @@ def _update_analysis_progress(
 
 async def _analyze_category_sequential(
     chapter: models.Chapter,
+    book_title: str,
     cat_map: dict[str, list[str]],
     agent: _AnalysisAgent,
     deps: models.AgentDeps,
@@ -169,6 +179,7 @@ async def _analyze_category_sequential(
 
     Args:
         chapter: The chapter model.
+        book_title: Title of the book.
         cat_map: Mapping of categories to entity names.
         agent: The AI agent.
         deps: Agent dependencies.
@@ -188,6 +199,7 @@ async def _analyze_category_sequential(
         batch_profiles = await _analyze_batch(
             batch_targets,
             chapter,
+            book_title,
             agent,
             deps,
             traits,
@@ -201,6 +213,7 @@ async def _analyze_category_sequential(
 
 async def _analyze_chapter_block(
     chapter: models.Chapter,
+    book_title: str,
     cat_map: dict[str, list[str]],
     agent: _AnalysisAgent,
     deps: models.AgentDeps,
@@ -216,6 +229,7 @@ async def _analyze_chapter_block(
 
     Args:
         chapter: The chapter model.
+        book_title: Title of the book.
         cat_map: Mapping of categories to entity names.
         agent: The AI agent.
         deps: Agent dependencies.
@@ -233,6 +247,7 @@ async def _analyze_chapter_block(
     async with semaphore:
         return await _analyze_category_sequential(
             chapter,
+            book_title,
             cat_map,
             agent,
             deps,
@@ -319,6 +334,7 @@ async def analyze_entities(
         task = asyncio.create_task(
             _analyze_chapter_block(
                 chapter,
+                book.title,
                 cat_map,
                 agent,
                 deps,

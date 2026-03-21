@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from lorebinders.models import (
     AnalyzedTrait,
     Book,
+    BookInput,
     Chapter,
     EntityProfile,
     NarratorConfig,
@@ -39,22 +40,24 @@ def test_narrator_config_validation() -> None:
 def test_run_configuration_validation() -> None:
     """Verify RunConfiguration requires specific fields and handles defaults."""
     narrator = NarratorConfig(is_1st_person=False)
+    book = BookInput(path=Path("./book.epub"), title="Test Book")
 
     config = RunConfiguration(
-        book_path=Path("./book.epub"),
+        series_title="Test Series",
+        books=[book],
         author_name="Test Author",
-        book_title="Test Book",
         narrator_config=narrator,
         custom_traits={"Characters": ["brave"]},
         custom_categories=["personality"],
     )
     assert config.author_name == "Test Author"
-    assert config.book_path == Path("./book.epub")
+    assert config.books[0].path == Path("./book.epub")
+    assert config.series_title == "Test Series"
 
     with pytest.raises(ValidationError):
         RunConfiguration(
-            book_path=Path("./book.epub"),
-            book_title="Test Book",
+            series_title="Test Series",
+            author_name="Test Author",
             narrator_config=narrator,
             custom_traits={},
             custom_categories=[],
@@ -92,10 +95,12 @@ def test_entity_profile_model() -> None:
         name="Sherlock",
         category="Characters",
         chapter_number=1,
+        book_title="A Study in Scarlet",
         traits={"intelligence": "High", "brave": "Yes"},
         confidence_score=0.95,
     )
 
     assert profile.name == "Sherlock"
+    assert profile.book_title == "A Study in Scarlet"
     assert profile.traits["intelligence"] == "High"
     assert profile.confidence_score == 0.95

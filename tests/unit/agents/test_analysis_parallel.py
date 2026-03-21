@@ -1,10 +1,12 @@
+import json
 from pathlib import Path
 
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from lorebinders.agent.analysis import analyze_entities
+from lorebinders.agent.factory import create_analysis_agent
 from lorebinders.models import AgentDeps, Book, Chapter
 from lorebinders.settings import Settings
 from tests.utils import TestStorageProvider
@@ -69,9 +71,9 @@ async def test_analyze_entities_parallel_basic(tmp_path: Path) -> None:
         ],
     }
 
-    import json
-
-    def mock_call(messages: list[ModelMessage], info: object) -> ModelResponse:
+    def mock_call(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
         user_msg = str(messages[-1])
 
         chap_num = 1 if "Gandalf and Frodo Shire" in user_msg else 2
@@ -82,8 +84,6 @@ async def test_analyze_entities_parallel_basic(tmp_path: Path) -> None:
         return ModelResponse(
             parts=[TextPart(content=json.dumps({"response": resp}))]
         )
-
-    from lorebinders.agent.factory import create_analysis_agent
 
     ana_agent = create_analysis_agent()
 

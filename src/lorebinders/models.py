@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
@@ -28,13 +28,21 @@ class NarratorConfig(BaseModel):
     name: str | None = None
 
 
+class BookInput(BaseModel):
+    """Configuration for a single book input."""
+
+    path: Path
+    title: str
+
+
 class RunConfiguration(BaseModel):
     """Configuration for a complete execution run."""
 
-    book_path: Path
+    series_title: str
+    books: list[BookInput]
     author_name: str
-    book_title: str
     narrator_config: NarratorConfig
+    appearance_tracking: Literal["nested", "flat"] = "nested"
     custom_traits: dict[str, list[str]] = Field(default_factory=dict)
     custom_categories: list[str] = Field(default_factory=list)
 
@@ -61,6 +69,7 @@ class EntityProfile(BaseModel):
     name: str
     category: str
     chapter_number: int
+    book_title: str
     traits: EntityTraits = Field(
         default_factory=dict, description="Map of trait keys to analysis values"
     )
@@ -81,12 +90,28 @@ class EntityAppearance(BaseModel):
     traits: EntityTraits = Field(default_factory=dict)
 
 
+class AppearanceValue(BaseModel):
+    """Base class for appearance values."""
+
+
+class SingleAppearance(AppearanceValue):
+    """Single appearance for flat tracking."""
+
+    appearance: EntityAppearance
+
+
+class ChapterAppearances(AppearanceValue):
+    """Multiple appearances for nested tracking."""
+
+    chapters: dict[int, EntityAppearance]
+
+
 class EntityRecord(BaseModel):
     """Complete record for an entity across the book."""
 
     name: str
     category: str
-    appearances: dict[int, EntityAppearance] = Field(default_factory=dict)
+    appearances: dict[str, AppearanceValue] = Field(default_factory=dict)
     summary: str | None = None
 
 
@@ -120,7 +145,9 @@ class Binder(BaseModel):
         category: str,
         name: str,
         chapter: int,
+        book_title: str,
         traits: EntityTraits,
+        tracking: Literal["nested", "flat"] = "nested",
     ) -> None:
         """Add an entity appearance to the binder."""
         if category not in self.categories:
@@ -131,7 +158,17 @@ class Binder(BaseModel):
             cat.entities[name] = EntityRecord(name=name, category=category)
 
         ent = cat.entities[name]
-        ent.appearances[chapter] = EntityAppearance(traits=traits)
+        appearance = EntityAppearance(traits=traits)
+
+        if tracking == "nested":
+            if book_title not in ent.appearances:
+                ent.appearances[book_title] = ChapterAppearances(chapters={})
+            ch_app = ent.appearances[book_title]
+            if isinstance(ch_app, ChapterAppearances):
+                ch_app.chapters[chapter] = appearance
+        else:
+            key = f"{book_title}_ch{chapter}"
+            ent.appearances[key] = SingleAppearance(appearance=appearance)
 
 
 class CategoryEntities(BaseModel):

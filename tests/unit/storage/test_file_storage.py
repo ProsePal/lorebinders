@@ -30,8 +30,8 @@ def test_save_extraction_writes_json(
     storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     data = {"Characters": ["Alice", "Bob"]}
-    storage.save_extraction(1, data)
-    path = tmp_path / "extractions" / "ch1_extraction.json"
+    storage.save_extraction(1, data, book_title="Book 1")
+    path = tmp_path / "extractions" / "Book_1_ch1_extraction.json"
     assert path.exists()
     assert json.loads(path.read_text()) == data
 
@@ -41,12 +41,13 @@ def test_save_profile_writes_json(
 ) -> None:
     profile = models.EntityProfile(
         chapter_number=1,
+        book_title="Book 1",
         category="Characters",
         name="Alice",
         traits={"Role": "Hero"},
     )
     storage.save_profile(1, profile)
-    path = tmp_path / "profiles" / "ch1_Characters_Alice.json"
+    path = tmp_path / "profiles" / "Book_1_ch1_Characters_Alice.json"
     assert path.exists()
     loaded = models.EntityProfile.model_validate_json(path.read_text())
     assert loaded == profile

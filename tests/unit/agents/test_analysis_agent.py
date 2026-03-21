@@ -13,13 +13,13 @@ from lorebinders.models import (
     CategoryTarget,
 )
 from lorebinders.settings import Settings
-from tests.utils import create_mock_model, get_system_prompt
+from tests.utils import JsonValue, create_mock_model, get_system_prompt
 
 
 @pytest.mark.anyio
 async def test_analysis_agent_run_async_and_prompt() -> None:
     """Test run execution and system prompt generation using PydanticAI."""
-    expected_result_dict = [
+    expected_result_dict: JsonValue = [
         {
             "entity_name": "Gandalf",
             "category": "Character",
