@@ -16,6 +16,7 @@ from rich.progress import (
 from lorebinders import app, models
 from lorebinders.cli.configuration import build_run_configuration
 from lorebinders.logging import configure_logging
+from lorebinders.storage import DBStorage, FilesystemStorage, StorageProvider
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -90,6 +91,12 @@ def main(
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Enable verbose logging")
     ] = False,
+    storage: Annotated[
+        Literal["file", "db"],
+        typer.Option(
+            "--storage", help="Storage provider to use ('file' or 'db')"
+        ),
+    ] = "file",
 ) -> None:
     """LoreBinders: Create a Story Bible from your book.
 
@@ -120,6 +127,10 @@ def main(
     )
     _setup_logging(log_file, verbose)
 
+    provider_class: type[StorageProvider] = (
+        DBStorage if storage == "db" else FilesystemStorage
+    )
+
     console.print("[bold blue]Starting LoreBinders...[/bold blue]")
     try:
         with Progress(
@@ -131,7 +142,7 @@ def main(
             console=console,
         ) as progress:
             handler = ProgressHandler(progress)
-            output = app.run(config, progress=handler)
+            output = app.run(config, progress=handler, provider=provider_class)
 
         console.print(f"[bold green]Complete![/bold green] Report: {output}")
     except Exception as e:

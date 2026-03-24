@@ -1,14 +1,12 @@
 import asyncio
-import logging
 from collections.abc import Callable
 from pathlib import Path
 
 from pydantic_ai import Agent
 
 from lorebinders import models
+from lorebinders.storage import FilesystemStorage, StorageProvider
 from lorebinders.workflow import build_binder
-
-logger = logging.getLogger(__name__)
 
 
 def run(
@@ -24,6 +22,7 @@ def run(
     summarization_agent: (
         Agent[models.AgentDeps, models.SummarizerResult] | None
     ) = None,
+    provider: type[StorageProvider] = FilesystemStorage,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
 
@@ -34,6 +33,7 @@ def run(
         extraction_agent: Optional agent override.
         analysis_agent: Optional agent override.
         summarization_agent: Optional agent override.
+        provider: Storage provider class to use for persistence.
 
     Returns:
         The path to the generated PDF report.
@@ -46,5 +46,6 @@ def run(
             extraction_agent=extraction_agent,
             analysis_agent=analysis_agent,
             summarization_agent=summarization_agent,
+            provider=provider,
         )
     )
