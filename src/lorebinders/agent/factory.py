@@ -125,6 +125,19 @@ async def run_agent_async(
             f"Agent run completed with model {model}",
             meta,
         )
+        usage = res.usage()
+        emit_observation(
+            on_observe,
+            ObservationType.METRIC,
+            "agent",
+            f"Token usage for model {model}",
+            {
+                "model": model,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.input_tokens + usage.output_tokens,
+            },
+        )
         return res.output
     except Exception as e:
         logger.error(f"Agent run failed: {e}")
