@@ -83,5 +83,8 @@ async def test_run_agent_async_emits_metric_event() -> None:
     assert isinstance(meta["input_tokens"], int)
     assert isinstance(meta["output_tokens"], int)
     assert isinstance(meta["total_tokens"], int)
+    assert meta["input_tokens"] >= 0
+    assert meta["output_tokens"] >= 0
+    assert meta["total_tokens"] >= 0
     assert meta["total_tokens"] == meta["input_tokens"] + meta["output_tokens"]
     assert "model" in meta
