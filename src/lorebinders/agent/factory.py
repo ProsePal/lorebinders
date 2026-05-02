@@ -9,7 +9,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.output import OutputDataT
+from pydantic_ai.output import OutputDataT, OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
 
@@ -57,7 +57,7 @@ def _is_moderation_error(exc: Exception) -> bool:
 def create_agent(
     model: Model | str,
     deps_type: type[AgentDepsT],
-    output_type: type[OutputDataT],
+    output_type: OutputSpec[OutputDataT],
     model_settings: ModelSettings | None = None,
     fallback: Model | str | None = None,
 ) -> Agent[AgentDepsT, OutputDataT]:
@@ -66,7 +66,8 @@ def create_agent(
     Args:
         model: The primary model to use.
         deps_type: Type of agent dependencies.
-        output_type: Type of structured output.
+        output_type: Structured output spec (plain type, PromptedOutput,
+            NativeOutput, etc.).
         model_settings: Optional model settings.
         fallback: Optional fallback model.
 
@@ -218,21 +219,30 @@ def build_extraction_user_prompt(
 
 def create_analysis_agent(
     settings: "Settings | None" = None,
+    output_type: "OutputSpec[list[AnalysisResult]] | None" = None,
 ) -> Agent[AgentDeps, list[AnalysisResult]]:
     """Create a configured analysis agent.
 
     Args:
         settings: Optional application settings.
+        output_type: Optional output spec override. Defaults to plain
+            ``list[AnalysisResult]`` (tool-based structured output). Pass
+            ``PromptedOutput(list[AnalysisResult])`` to use prompt-based JSON
+            extraction instead, which works with models that do not support
+            tool calling.
 
     Returns:
         A PydanticAI Agent configured for entity analysis.
     """
     _settings = settings or get_settings()
+    _output: OutputSpec[list[AnalysisResult]] = (
+        output_type if output_type is not None else list[AnalysisResult]
+    )
 
     agent: Agent[AgentDeps, list[AnalysisResult]] = create_agent(
         _settings.analysis_model,
         deps_type=AgentDeps,
-        output_type=list[AnalysisResult],
+        output_type=_output,
         fallback=_settings.analysis_fallback_model,
     )
 
