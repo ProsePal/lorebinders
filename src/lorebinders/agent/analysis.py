@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeAlias
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from lorebinders import models
 from lorebinders.agent.factory import (
@@ -92,11 +93,13 @@ async def _analyze_batch(
     if not to_analyze:
         return profiles
 
-    prompt = build_analysis_user_prompt(
-        context_text=chapter.content, categories=to_analyze
-    )
-    result = await run_agent_async(
-        agent, prompt, deps=deps, on_observe=on_observe
+    result = await _run_analysis_batch(
+        to_analyze,
+        chapter,
+        agent,
+        deps,
+        effective_traits,
+        on_observe=on_observe,
     )
     _process_analysis_results(
         result, profiles, chapter.number, book_title, storage, deps.settings
@@ -115,6 +118,48 @@ def _prepare_run_targets(
     traits = traits_map.get(cat) or ["Description", "Role"]
     targets.append(
         models.CategoryTarget(name=cat, entities=names, traits=traits)
+    )
+
+
+async def _run_analysis_batch(
+    target_categories: list[models.CategoryTarget],
+    chapter: models.Chapter,
+    agent: _AnalysisAgent,
+    deps: models.AgentDeps,
+    effective_traits: dict[str, list[str]],
+    model_settings: ModelSettings | None = None,
+    on_observe: _ObserveCb = None,
+) -> list[models.AnalysisResult]:
+    to_analyze: list[models.CategoryTarget] = []
+    for cat_target in target_categories:
+        if not cat_target.entities:
+            continue
+        traits = (
+            cat_target.traits
+            if cat_target.traits is not None
+            else effective_traits.get(cat_target.name)
+            or ["Description", "Role"]
+        )
+        to_analyze.append(
+            models.CategoryTarget(
+                name=cat_target.name,
+                entities=cat_target.entities,
+                traits=traits,
+            )
+        )
+
+    if not to_analyze:
+        return []
+
+    prompt = build_analysis_user_prompt(
+        context_text=chapter.content, categories=to_analyze
+    )
+    return await run_agent_async(
+        agent,
+        prompt,
+        deps=deps,
+        model_settings=model_settings,
+        on_observe=on_observe,
     )
 
 
@@ -260,6 +305,63 @@ async def _analyze_chapter_block(
         )
 
 
+async def _analyze_category_results_sequential(
+    chapter: models.Chapter,
+    cat_map: dict[str, list[str]],
+    agent: _AnalysisAgent,
+    deps: models.AgentDeps,
+    traits: dict[str, list[str]],
+    progress: _ProgressCb,
+    state: list[int],
+    total: int,
+    model_settings: ModelSettings | None,
+    on_observe: _ObserveCb,
+) -> list[models.AnalysisResult]:
+    results: list[models.AnalysisResult] = []
+    for category, names in cat_map.items():
+        batch_targets = [models.CategoryTarget(name=category, entities=names)]
+        batch_results = await _run_analysis_batch(
+            batch_targets,
+            chapter,
+            agent,
+            deps,
+            traits,
+            model_settings=model_settings,
+            on_observe=on_observe,
+        )
+        results.extend(batch_results)
+        _update_analysis_progress(progress, state, total, chapter.number)
+    return results
+
+
+async def _analyze_chapter_results_block(
+    chapter: models.Chapter,
+    cat_map: dict[str, list[str]],
+    agent: _AnalysisAgent,
+    deps: models.AgentDeps,
+    traits: dict[str, list[str]],
+    semaphore: asyncio.Semaphore,
+    progress: _ProgressCb,
+    state: list[int],
+    total: int,
+    model_settings: ModelSettings | None = None,
+    on_observe: _ObserveCb = None,
+) -> list[models.AnalysisResult]:
+    async with semaphore:
+        return await _analyze_category_results_sequential(
+            chapter,
+            cat_map,
+            agent,
+            deps,
+            traits,
+            progress,
+            state,
+            total,
+            model_settings,
+            on_observe,
+        )
+
+
 def _add_entity_to_chapters(
     ch_entities: dict[int, dict[str, list[str]]],
     category: str,
@@ -288,6 +390,71 @@ def _group_entities_by_chapter(
         for ent_name, chapters in ent_chapters.items():
             _add_entity_to_chapters(ch_entities, category, ent_name, chapters)
     return dict(ch_entities)
+
+
+async def analyze_entity_results(
+    entities: SortedExtractions,
+    book: models.Book,
+    agent: _AnalysisAgent,
+    deps: models.AgentDeps,
+    effective_traits: dict[str, list[str]],
+    model_settings: ModelSettings | None = None,
+    progress: _ProgressCb = None,
+    on_observe: _ObserveCb = None,
+    raise_on_error: bool = False,
+) -> list[models.AnalysisResult]:
+    """Analyze entities and return raw agent results.
+
+    This follows the same chapter concurrency and per-category sequencing as
+    ``analyze_entities``. It returns ``AnalysisResult`` records before the
+    production storage layer collapses trait evidence into ``EntityProfile``
+    values, which lets evaluation code score evidence quality.
+    """
+    ch_map = {ch.number: ch for ch in book.chapters}
+    ch_entities = _group_entities_by_chapter(entities)
+
+    total_tasks = sum(len(cat_map) for cat_map in ch_entities.values())
+    chapter_count = len(ch_entities)
+    logger.info(
+        f"Analyzing {total_tasks} result batches across "
+        f"{chapter_count} chapters"
+    )
+
+    semaphore = asyncio.Semaphore(deps.settings.max_concurrency)
+    state = [0]
+    chapter_tasks: list[asyncio.Task[list[models.AnalysisResult]]] = []
+
+    for ch_num, cat_map in ch_entities.items():
+        chapter = ch_map.get(ch_num)
+        if not chapter:
+            continue
+        task = asyncio.create_task(
+            _analyze_chapter_results_block(
+                chapter,
+                cat_map,
+                agent,
+                deps,
+                effective_traits,
+                semaphore,
+                progress,
+                state,
+                total_tasks,
+                model_settings,
+                on_observe,
+            )
+        )
+        chapter_tasks.append(task)
+
+    task_results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
+    results: list[models.AnalysisResult] = []
+    for result in task_results:
+        if isinstance(result, Exception):
+            if raise_on_error:
+                raise result
+            logger.error(f"Analysis task failed: {result}")
+            continue
+        results.extend(result)
+    return results
 
 
 async def analyze_entities(

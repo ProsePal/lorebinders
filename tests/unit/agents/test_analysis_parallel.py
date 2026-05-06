@@ -5,7 +5,7 @@ import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from lorebinders.agent.analysis import analyze_entities
+from lorebinders.agent.analysis import analyze_entities, analyze_entity_results
 from lorebinders.agent.factory import create_analysis_agent
 from lorebinders.models import AgentDeps, Book, Chapter
 from lorebinders.settings import Settings
@@ -121,6 +121,97 @@ async def test_analyze_entities_parallel_basic(tmp_path: Path) -> None:
     assert "Frodo" in names
     assert "Shire" in names
     assert "Rivendell" in names
+
+
+@pytest.mark.anyio
+async def test_analyze_entity_results_runs_one_call_per_category() -> None:
+    entities = {
+        "Characters": {"Gandalf": [1], "Frodo": [1]},
+        "Locations": {"Shire": [1]},
+    }
+    seen_categories: list[str] = []
+
+    def mock_call(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        user_msg = str(messages[-1])
+        if "### Characters" in user_msg:
+            seen_categories.append("Characters")
+            response = [
+                {
+                    "entity_name": "Gandalf",
+                    "category": "Characters",
+                    "traits": [
+                        {
+                            "trait": "Role",
+                            "value": "Wizard",
+                            "evidence": "Gandalf",
+                        }
+                    ],
+                },
+                {
+                    "entity_name": "Frodo",
+                    "category": "Characters",
+                    "traits": [
+                        {
+                            "trait": "Role",
+                            "value": "Hobbit",
+                            "evidence": "Frodo",
+                        }
+                    ],
+                },
+            ]
+        else:
+            seen_categories.append("Locations")
+            response = [
+                {
+                    "entity_name": "Shire",
+                    "category": "Locations",
+                    "traits": [
+                        {
+                            "trait": "Type",
+                            "value": "Village",
+                            "evidence": "Shire",
+                        }
+                    ],
+                }
+            ]
+
+        return ModelResponse(
+            parts=[TextPart(content=json.dumps({"response": response}))]
+        )
+
+    ana_agent = create_analysis_agent()
+    settings = Settings()
+    deps = AgentDeps(settings=settings, prompt_loader=lambda x: "mock")
+    book = Book(
+        title="LOTR",
+        author="Tolkien",
+        chapters=[
+            Chapter(
+                number=1,
+                title="Ch 1",
+                content="Gandalf and Frodo in the Shire",
+            )
+        ],
+    )
+
+    with ana_agent.override(model=FunctionModel(mock_call)):
+        results = await analyze_entity_results(
+            entities,
+            book,
+            ana_agent,
+            deps,
+            {"Characters": ["Role"], "Locations": ["Type"]},
+        )
+
+    assert seen_categories == ["Characters", "Locations"]
+    assert [result.entity_name for result in results] == [
+        "Gandalf",
+        "Frodo",
+        "Shire",
+    ]
+    assert results[0].traits[0].evidence == "Gandalf"
 
 
 @pytest.mark.anyio

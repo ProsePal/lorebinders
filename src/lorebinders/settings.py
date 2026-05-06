@@ -33,13 +33,14 @@ class Settings(BaseSettings):
     categories: list[str] = ["Characters", "Locations"]
     character_traits: list[str] = [
         "Appearance",
+        "Clothing",
         "Personality",
         "Mood",
-        "Relationships to other characters",
+        "Relationships with other characters",
     ]
     location_traits: list[str] = [
-        "Key Features",
-        "Relative Location",
+        "Key features",
+        "Relative location",
         "Character Familiarity",
     ]
 

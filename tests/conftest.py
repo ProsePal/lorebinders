@@ -3,6 +3,8 @@ from collections.abc import Generator
 
 import pytest
 
+os.environ.setdefault("OPENAI_MODEL", "gpt-4o-mini")
+
 
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers and filters."""
