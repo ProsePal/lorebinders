@@ -154,13 +154,24 @@ async def _run_analysis_batch(
     prompt = build_analysis_user_prompt(
         context_text=chapter.content, categories=to_analyze
     )
-    return await run_agent_async(
+    results = await run_agent_async(
         agent,
         prompt,
         deps=deps,
         model_settings=model_settings,
         on_observe=on_observe,
     )
+
+    category_map = {
+        entity.lower(): target.name
+        for target in target_categories
+        for entity in target.entities
+    }
+    for result in results:
+        if target_name := category_map.get(result.entity_name.lower()):
+            result.category = target_name
+
+    return results
 
 
 def _process_analysis_results(

@@ -38,3 +38,11 @@ While the CLI is the current primary interface, the core engine should remain de
 
 - **Structured Output**: The engine returns Pydantic models, allowing any frontend (web, mobile, desktop) to render the Story Bible state according to its own design system.
 - **Hook-Driven Updates**: The progress callable mechanism should be the only way the engine communicates status, ensuring it remains generic and interface-independent.
+
+## Agent Output Consistency
+
+The engine enforces strict schema consistency on agent outputs to ensure pipeline reliability and accurate evaluation.
+
+- **Schema Enforcement**: The analysis orchestrator maps entity results back to the requested categories. This prevents discrepancies where models return different category names (e.g., singular vs plural) than what was requested.
+- **Deterministic Metrics**: Normalizing category assignments at the engine boundary ensures that evaluation metrics such as entity recall remain deterministic and unaffected by minor model naming variations.
+- **Data Integrity**: Consistent categorization prevents fragmented records in the Binder and Storage layers by ensuring all appearances of an entity are indexed under the same canonical category.
