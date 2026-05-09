@@ -7,12 +7,13 @@ from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
-from pydantic_ai.models import Model
+from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputDataT, OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
 
+from lorebinders.agent_settings import provider_factory
 from lorebinders.models import (
     AgentDeps,
     AnalysisResult,
@@ -155,6 +156,18 @@ async def run_agent_async(
         raise
 
 
+def init_extraction_model(settings: Settings) -> Model:
+    """Initialize the extraction model.
+
+    Args:
+        settings: Optional application settings.
+
+    Returns:
+        The initialized extraction model.
+    """
+    return infer_model(settings.extraction_model, provider_factory)
+
+
 def create_extraction_agent(
     settings: "Settings | None" = None,
 ) -> Agent[AgentDeps, ExtractionResult]:
@@ -169,7 +182,7 @@ def create_extraction_agent(
     _settings = settings or get_settings()
 
     agent: Agent[AgentDeps, ExtractionResult] = create_agent(
-        _settings.extraction_model,
+        init_extraction_model(_settings),
         deps_type=AgentDeps,
         output_type=ExtractionResult,
         model_settings=_settings.extractor_model_settings,
@@ -217,6 +230,18 @@ def build_extraction_user_prompt(
     return "\n".join(prompt)
 
 
+def init_analysis_model(settings: Settings) -> Model:
+    """Initialize the analysis model.
+
+    Args:
+        settings: Application settings.
+
+    Returns:
+        The initialized analysis model.
+    """
+    return infer_model(settings.analysis_model, provider_factory)
+
+
 def create_analysis_agent(
     settings: "Settings | None" = None,
     output_type: "OutputSpec[list[AnalysisResult]] | None" = None,
@@ -240,7 +265,7 @@ def create_analysis_agent(
     )
 
     agent: Agent[AgentDeps, list[AnalysisResult]] = create_agent(
-        _settings.analysis_model,
+        init_analysis_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
         fallback=_settings.analysis_fallback_model,
@@ -282,6 +307,18 @@ def build_analysis_user_prompt(
     return "\n".join(prompt)
 
 
+def init_summarization_model(settings: Settings) -> Model:
+    """Initialize the summarization model.
+
+    Args:
+        settings: Application settings.
+
+    Returns:
+        The initialized summarization model.
+    """
+    return infer_model(settings.summarization_model, provider_factory)
+
+
 def create_summarization_agent(
     settings: "Settings | None" = None,
 ) -> Agent[AgentDeps, SummarizerResult]:
@@ -296,7 +333,7 @@ def create_summarization_agent(
     _settings = settings or get_settings()
 
     agent: Agent[AgentDeps, SummarizerResult] = create_agent(
-        _settings.summarization_model,
+        init_summarization_model(_settings),
         deps_type=AgentDeps,
         output_type=SummarizerResult,
         fallback=_settings.summarization_fallback_model,

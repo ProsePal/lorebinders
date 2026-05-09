@@ -6,6 +6,8 @@ from pydantic_ai.models.google import GoogleModelSettings
 from pydantic_ai.models.groq import GroqModelSettings
 from pydantic_ai.models.openai import OpenAIChatModelSettings
 from pydantic_ai.models.openrouter import OpenRouterModelSettings
+from pydantic_ai.providers import Provider, infer_provider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 
 def _openai_settings() -> ModelSettings:
@@ -45,10 +47,26 @@ def get_model_settings(model_provider: str) -> ModelSettings:
         "google-gla": _google_settings,
         "google-vertex": _google_settings,
         "groq": _groq_settings,
-        "openrouter": _openrouter_settings,
+        "openrouter": (_openrouter_settings),
     }
 
     if model_provider in configs:
         return configs[model_provider]()
 
     return ModelSettings()
+
+
+def provider_factory(provider: str) -> Provider:
+    """Add app title to OpenRouter provider or use PydtanticAi factory.
+
+    Args:
+        provider (str): The provider to use.
+
+    Returns:
+        Provider: The provider instance.
+    """
+    return (
+        OpenRouterProvider(app_title="Lorebinders")
+        if provider == "openrouter"
+        else infer_provider(provider)
+    )
