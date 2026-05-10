@@ -170,21 +170,30 @@ def init_extraction_model(settings: Settings) -> Model:
 
 def create_extraction_agent(
     settings: "Settings | None" = None,
+    output_type: "OutputSpec[ExtractionResult] | None" = None,
 ) -> Agent[AgentDeps, ExtractionResult]:
     """Create a configured extraction agent.
 
     Args:
         settings: Optional application settings.
+        output_type: Optional output spec override. Defaults to plain
+            ``ExtractionResult`` (tool-based structured output). Pass
+            ``PromptedOutput(ExtractionResult)`` to use prompt-based JSON
+            extraction instead, which works with models that do not support
+            tool calling.
 
     Returns:
         A PydanticAI Agent configured for entity extraction.
     """
     _settings = settings or get_settings()
+    _output: OutputSpec[ExtractionResult] = (
+        output_type if output_type is not None else ExtractionResult
+    )
 
     agent: Agent[AgentDeps, ExtractionResult] = create_agent(
         init_extraction_model(_settings),
         deps_type=AgentDeps,
-        output_type=ExtractionResult,
+        output_type=_output,
         model_settings=_settings.extractor_model_settings,
         fallback=_settings.extraction_fallback_model,
     )
@@ -321,21 +330,30 @@ def init_summarization_model(settings: Settings) -> Model:
 
 def create_summarization_agent(
     settings: "Settings | None" = None,
+    output_type: "OutputSpec[SummarizerResult] | None" = None,
 ) -> Agent[AgentDeps, SummarizerResult]:
     """Create a configured summarization agent.
 
     Args:
         settings: Optional application settings.
+        output_type: Optional output spec override. Defaults to plain
+            ``SummarizerResult`` (tool-based structured output). Pass
+            ``PromptedOutput(SummarizerResult)`` to use prompt-based JSON
+            extraction instead, which works with models that do not support
+            tool calling.
 
     Returns:
         A PydanticAI Agent configured for entity summarization.
     """
     _settings = settings or get_settings()
+    _output: OutputSpec[SummarizerResult] = (
+        output_type if output_type is not None else SummarizerResult
+    )
 
     agent: Agent[AgentDeps, SummarizerResult] = create_agent(
         init_summarization_model(_settings),
         deps_type=AgentDeps,
-        output_type=SummarizerResult,
+        output_type=_output,
         fallback=_settings.summarization_fallback_model,
     )
 

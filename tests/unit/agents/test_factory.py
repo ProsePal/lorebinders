@@ -2,11 +2,13 @@ import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.output import PromptedOutput
 
 from lorebinders.agent.factory import (
     _is_moderation_error,
     create_agent,
     create_extraction_agent,
+    create_summarization_agent,
     load_prompt_from_assets,
     run_agent_async,
 )
@@ -15,6 +17,7 @@ from lorebinders.models import (
     ExtractionResult,
     ObservationEvent,
     ObservationType,
+    SummarizerResult,
 )
 from lorebinders.settings import get_settings
 
@@ -53,6 +56,22 @@ def test_create_agent_with_fallback_wraps_in_fallback_model() -> None:
         fallback=fallback,
     )
     assert isinstance(agent.model, FallbackModel)
+
+
+def test_create_extraction_agent_accepts_output_type_override() -> None:
+    agent = create_extraction_agent(
+        output_type=PromptedOutput(ExtractionResult)
+    )
+
+    assert agent is not None
+
+
+def test_create_summarization_agent_accepts_output_type_override() -> None:
+    agent = create_summarization_agent(
+        output_type=PromptedOutput(SummarizerResult)
+    )
+
+    assert agent is not None
 
 
 @pytest.mark.anyio
