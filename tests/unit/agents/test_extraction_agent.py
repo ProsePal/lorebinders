@@ -1,6 +1,7 @@
 import pytest
 from pydantic_ai.models.fallback import FallbackModel
 
+from lorebinders import models
 from lorebinders.agent.factory import (
     build_extraction_user_prompt,
     create_extraction_agent,
@@ -16,7 +17,16 @@ async def test_extraction_agent_run_async_and_prompt() -> None:
     mock_model, captured_messages = create_mock_model(
         {
             "results": [
-                {"category": "Characters", "entities": ["Hero", "Villain"]}
+                {
+                    "category": "Characters",
+                    "entities": [
+                        {"name": "Hero", "presence_type": "literal_character"},
+                        {
+                            "name": "Villain",
+                            "presence_type": "literal_character",
+                        },
+                    ],
+                }
             ]
         }
     )
@@ -36,7 +46,16 @@ async def test_extraction_agent_run_async_and_prompt() -> None:
 
         result = await run_agent_async(agent, prompt, deps)
 
-        assert result.to_dict() == {"Characters": ["Hero", "Villain"]}
+        assert result.to_dict() == {
+            "Characters": [
+                models.ExtractedEntity(
+                    name="Hero", presence_type="literal_character"
+                ),
+                models.ExtractedEntity(
+                    name="Villain", presence_type="literal_character"
+                ),
+            ]
+        }
 
     system_prompt_content = get_system_prompt(captured_messages)
 

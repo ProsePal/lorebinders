@@ -459,7 +459,7 @@ async def analyze_entity_results(
     task_results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
     results: list[models.AnalysisResult] = []
     for result in task_results:
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             if raise_on_error:
                 raise result
             logger.error(f"Analysis task failed: {result}")

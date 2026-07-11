@@ -50,7 +50,21 @@ def test_path_raises_when_workspace_not_set() -> None:
 def test_extraction_lifecycle(storage: DBStorage) -> None:
     """Test saving and loading extraction data."""
     chapter_num = 1
-    data = {"Characters": ["Alice", "Bob"], "Locations": ["Paris"]}
+    data = {
+        "Characters": [
+            models.ExtractedEntity(
+                name="Alice", presence_type="literal_character"
+            ),
+            models.ExtractedEntity(
+                name="Bob", presence_type="literal_character"
+            ),
+        ],
+        "Locations": [
+            models.ExtractedEntity(
+                name="Paris", presence_type="literal_character"
+            )
+        ],
+    }
 
     assert not storage.extraction_exists(chapter_num, book_title="Book 1")
 
@@ -63,8 +77,24 @@ def test_extraction_lifecycle(storage: DBStorage) -> None:
 
 def test_save_extraction_updates_existing(storage: DBStorage) -> None:
     """save_extraction overwrites when record already exists."""
-    storage.save_extraction(1, {"Characters": ["Alice"]}, book_title="Book 1")
-    updated = {"Characters": ["Bob"]}
+    storage.save_extraction(
+        1,
+        {
+            "Characters": [
+                models.ExtractedEntity(
+                    name="Alice", presence_type="literal_character"
+                )
+            ]
+        },
+        book_title="Book 1",
+    )
+    updated = {
+        "Characters": [
+            models.ExtractedEntity(
+                name="Bob", presence_type="literal_character"
+            )
+        ]
+    }
     storage.save_extraction(1, updated, book_title="Book 1")
     assert storage.load_extraction(1, book_title="Book 1") == updated
 

@@ -40,7 +40,7 @@ class StorageProvider(Protocol):
     def save_extraction(
         self,
         chapter_num: int,
-        data: dict[str, list[str]],
+        data: dict[str, list[models.ExtractedEntity]],
         book_title: str = "",
     ) -> None:
         """Save extraction data.
@@ -54,7 +54,7 @@ class StorageProvider(Protocol):
 
     def load_extraction(
         self, chapter_num: int, book_title: str = ""
-    ) -> dict[str, list[str]]:
+    ) -> dict[str, list[models.ExtractedEntity]]:
         """Load extraction data.
 
         Args:

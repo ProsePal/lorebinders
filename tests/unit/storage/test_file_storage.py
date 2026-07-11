@@ -29,11 +29,25 @@ def test_path_raises_when_workspace_not_set() -> None:
 def test_save_extraction_writes_json(
     storage: FilesystemStorage, tmp_path: Path
 ) -> None:
-    data = {"Characters": ["Alice", "Bob"]}
+    data = {
+        "Characters": [
+            models.ExtractedEntity(
+                name="Alice", presence_type="literal_character"
+            ),
+            models.ExtractedEntity(
+                name="Bob", presence_type="literal_character"
+            ),
+        ]
+    }
     storage.save_extraction(1, data, book_title="Book 1")
     path = tmp_path / "extractions" / "Book_1_ch1_extraction.json"
     assert path.exists()
-    assert json.loads(path.read_text()) == data
+    assert json.loads(path.read_text()) == {
+        "Characters": [
+            {"name": "Alice", "presence_type": "literal_character"},
+            {"name": "Bob", "presence_type": "literal_character"},
+        ]
+    }
 
 
 def test_save_profile_writes_json(

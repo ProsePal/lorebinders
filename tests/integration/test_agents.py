@@ -33,8 +33,14 @@ async def test_agents_flow() -> None:
                                 {
                                     "category": "Characters",
                                     "entities": [
-                                        "Sherlock Holmes",
-                                        "Dr. Watson",
+                                        {
+                                            "name": "Sherlock Holmes",
+                                            "presence_type": "literal_character",  # noqa: E501
+                                        },
+                                        {
+                                            "name": "Dr. Watson",
+                                            "presence_type": "literal_character",  # noqa: E501
+                                        },
                                     ],
                                 }
                             ]
@@ -91,8 +97,8 @@ async def test_agents_flow() -> None:
         entities = result.to_dict()
 
         assert "Characters" in entities
-        assert "Sherlock Holmes" in entities["Characters"]
-        assert "Dr. Watson" in entities["Characters"]
+        assert any(e.name == "Sherlock Holmes" for e in entities["Characters"])
+        assert any(e.name == "Dr. Watson" for e in entities["Characters"])
 
         analysis_prompt = build_analysis_user_prompt(
             text_chunk,
