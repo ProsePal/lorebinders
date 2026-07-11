@@ -1,5 +1,7 @@
 """Set model settings for agents."""
 
+from typing import Any
+
 from pydantic_ai import ModelSettings
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 from pydantic_ai.models.google import GoogleModelSettings
@@ -56,7 +58,7 @@ def get_model_settings(model_provider: str) -> ModelSettings:
     return ModelSettings()
 
 
-def provider_factory(provider: str) -> Provider:
+def provider_factory(provider: str) -> Provider[Any]:
     """Add app title to OpenRouter provider or use PydtanticAi factory.
 
     Args:

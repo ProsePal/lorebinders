@@ -171,13 +171,22 @@ class Binder(BaseModel):
             ent.appearances[key] = SingleAppearance(appearance=appearance)
 
 
+class ExtractedEntity(BaseModel):
+    """An extracted entity with its presence type."""
+
+    name: str
+    presence_type: Literal[
+        "literal_character", "mentioned_character", "allusive_figure"
+    ]
+
+
 class CategoryEntities(BaseModel):
     """Entities extracted for a single category."""
 
     category: str = Field(description="Category name (e.g. 'Characters')")
-    entities: list[str] = Field(
+    entities: list[ExtractedEntity] = Field(
         default_factory=list,
-        description="List of entity names found in this category",
+        description="List of extracted entities found in this category",
     )
 
 
@@ -186,14 +195,14 @@ class ExtractionResult(BaseModel):
 
     results: list[CategoryEntities] = Field(
         default_factory=list,
-        description="List of categories with their extracted entity names",
+        description="List of categories with their extracted entities",
     )
 
-    def to_dict(self) -> dict[str, list[str]]:
+    def to_dict(self) -> dict[str, list[ExtractedEntity]]:
         """Convert results list to category ->entities dictionary.
 
         Returns:
-            A dictionary mapping category names to lists of entity names.
+            A dictionary mapping category names to lists of extracted entities.
         """
         return {item.category: item.entities for item in self.results}
 

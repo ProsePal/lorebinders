@@ -1,5 +1,6 @@
 import pytest
 
+from lorebinders import models
 from lorebinders.refinement.deduplication import is_similar_key
 from lorebinders.refinement.sorting import (
     _deduplicate_entity_names,
@@ -93,12 +94,37 @@ def test_deduplicate_entity_names_merges_titles() -> None:
 def test_sort_extractions_merges_characters() -> None:
     raw_data = {
         1: {
-            "Characters": ["John", "John Smith"],
-            "Locations": ["Shire", "The Shire"],
+            "Characters": [
+                models.ExtractedEntity(
+                    name="John", presence_type="literal_character"
+                ),
+                models.ExtractedEntity(
+                    name="John Smith", presence_type="literal_character"
+                ),
+            ],
+            "Locations": [
+                models.ExtractedEntity(
+                    name="Shire", presence_type="literal_character"
+                ),
+                models.ExtractedEntity(
+                    name="The Shire", presence_type="literal_character"
+                ),
+            ],
         },
         2: {
-            "Characters": ["John Smith", "Jane"],
-            "Locations": ["Shire"],
+            "Characters": [
+                models.ExtractedEntity(
+                    name="John Smith", presence_type="literal_character"
+                ),
+                models.ExtractedEntity(
+                    name="Jane", presence_type="literal_character"
+                ),
+            ],
+            "Locations": [
+                models.ExtractedEntity(
+                    name="Shire", presence_type="literal_character"
+                ),
+            ],
         },
     }
     sorted_data = sort_extractions(raw_data)
@@ -111,7 +137,17 @@ def test_sort_extractions_merges_characters() -> None:
 def test_sort_extractions_handles_narrator() -> None:
     raw_data = {
         1: {
-            "Characters": ["I", "Me", "John"],
+            "Characters": [
+                models.ExtractedEntity(
+                    name="I", presence_type="literal_character"
+                ),
+                models.ExtractedEntity(
+                    name="Me", presence_type="literal_character"
+                ),
+                models.ExtractedEntity(
+                    name="John", presence_type="literal_character"
+                ),
+            ],
         }
     }
     sorted_data = sort_extractions(raw_data, narrator_name="NarratorGuy")

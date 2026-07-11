@@ -50,7 +50,7 @@ async def _perform_extraction(
     config: models.RunConfiguration,
     semaphore: asyncio.Semaphore,
     on_observe: Callable[[models.ObservationEvent], None] | None,
-) -> dict[str, list[str]]:
+) -> dict[str, list[models.ExtractedEntity]]:
     """Helper to perform extraction with concurrency limit.
 
     Args:
@@ -63,7 +63,7 @@ async def _perform_extraction(
         on_observe: Optional observation callback.
 
     Returns:
-        A dictionary mapping categories to lists of extracted entity names.
+        A dictionary mapping categories to lists of extracted entities.
     """
     async with semaphore:
         prompt = build_extraction_user_prompt(
@@ -90,7 +90,7 @@ async def _extract_chapter(
     storage: StorageProvider,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
     on_observe: Callable[[models.ObservationEvent], None] | None = None,
-) -> tuple[int, dict[str, list[str]]]:
+) -> tuple[int, dict[str, list[models.ExtractedEntity]]]:
     """Extract entities from a chapter with throttling and storage.
 
     Args:
@@ -134,7 +134,7 @@ async def extract_book(
     storage: StorageProvider,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
     on_observe: Callable[[models.ObservationEvent], None] | None = None,
-) -> dict[int, dict[str, list[str]]]:
+) -> dict[int, dict[str, list[models.ExtractedEntity]]]:
     """Extract entities from all chapters in parallel with throttling.
 
     Args:
@@ -154,7 +154,9 @@ async def extract_book(
     logger.info(f"Extracting entities from {total} chapters")
     semaphore = asyncio.Semaphore(deps.settings.max_concurrency)
 
-    tasks: list[asyncio.Task[tuple[int, dict[str, list[str]]]]] = []
+    tasks: list[
+        asyncio.Task[tuple[int, dict[str, list[models.ExtractedEntity]]]]
+    ] = []
     for i, chap in enumerate(book.chapters, 1):
         task = asyncio.create_task(
             _extract_chapter(
@@ -175,9 +177,13 @@ async def extract_book(
         tasks.append(task)
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    extracted: dict[int, dict[str, list[str]]] = {}
+    extracted: dict[int, dict[str, list[models.ExtractedEntity]]] = {}
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
+            if isinstance(
+                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+            ):
+                raise r
             logger.error(f"Extraction task failed: {r}")
             continue
         if isinstance(r, tuple):

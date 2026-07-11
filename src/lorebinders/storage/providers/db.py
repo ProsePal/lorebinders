@@ -46,7 +46,7 @@ class ExtractionModel(Base):
     workspace_id: Mapped[str] = mapped_column(String(1024), index=True)
     book_title: Mapped[str] = mapped_column(String(255), index=True, default="")
     chapter_num: Mapped[int] = mapped_column(index=True)
-    data: Mapped[dict[str, list[str]]] = mapped_column(JSON)
+    data: Mapped[dict[str, list[dict[str, str]]]] = mapped_column(JSON)
 
 
 class ProfileModel(Base):
@@ -193,7 +193,7 @@ class DBStorage:
     def save_extraction(
         self,
         chapter_num: int,
-        data: dict[str, list[str]],
+        data: dict[str, list[models.ExtractedEntity]],
         book_title: str = "",
     ) -> None:
         """Save extraction data.
@@ -215,24 +215,27 @@ class DBStorage:
         session: Session,
         model: ExtractionModel | None,
         chapter_num: int,
-        data: dict[str, list[str]],
+        data: dict[str, list[models.ExtractedEntity]],
         book_title: str = "",
     ) -> None:
         """Insert or update an extraction record."""
+        dump_data = {
+            k: [v.model_dump() for v in val] for k, val in data.items()
+        }
         if model:
-            model.data = data
+            model.data = dump_data
             return
         new_model = ExtractionModel(
             workspace_id=self._require_workspace_id(),
             chapter_num=chapter_num,
             book_title=book_title,
-            data=data,
+            data=dump_data,
         )
         session.add(new_model)
 
     def load_extraction(
         self, chapter_num: int, book_title: str = ""
-    ) -> dict[str, list[str]]:
+    ) -> dict[str, list[models.ExtractedEntity]]:
         """Load extraction data.
 
         Args:
@@ -248,7 +251,9 @@ class DBStorage:
         with self._get_session() as session:
             if model := self._find_extraction(session, chapter_num, book_title):
                 return {
-                    str(k): [str(v) for v in val]
+                    str(k): [
+                        models.ExtractedEntity.model_validate(v) for v in val
+                    ]
                     for k, val in model.data.items()
                 }
             else:

@@ -3,6 +3,7 @@
 import logging
 from collections import defaultdict
 
+from lorebinders import models
 from lorebinders.refinement.deduplication import is_similar_key
 from lorebinders.refinement.normalization import clean_entity_name
 from lorebinders.refinement.patterns import NARRATOR_PATTERN
@@ -12,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 def _replace_narrator_in_categories(
-    categories: dict[str, list[str]], narrator_name: str
-) -> dict[str, list[str]]:
+    categories: dict[str, list[models.ExtractedEntity]], narrator_name: str
+) -> dict[str, list[models.ExtractedEntity]]:
     """Replace narrator references in category data.
 
     Args:
@@ -23,9 +24,14 @@ def _replace_narrator_in_categories(
     Returns:
         A dictionary with narrator placeholders replaced by the narrator name.
     """
-    result: dict[str, list[str]] = {
-        category: [NARRATOR_PATTERN.sub(narrator_name, n) for n in names]
-        for category, names in categories.items()
+    result: dict[str, list[models.ExtractedEntity]] = {
+        category: [
+            ent.model_copy(
+                update={"name": NARRATOR_PATTERN.sub(narrator_name, ent.name)}
+            )
+            for ent in entities
+        ]
+        for category, entities in categories.items()
     }
     return result
 
@@ -93,17 +99,18 @@ def _deduplicate_entity_names(names: list[str], category: str) -> list[str]:
 def _process_chapter_extractions(
     aggregated: SortedExtractions,
     chapter_num: int,
-    categories: dict[str, list[str]],
+    categories: dict[str, list[models.ExtractedEntity]],
 ) -> None:
     """Process all categories in a chapter extraction."""
-    for category, names in categories.items():
+    for category, entities in categories.items():
+        names = [e.name for e in entities]
         deduped = _deduplicate_entity_names(names, category)
         for name in deduped:
             _update_aggregated(aggregated, category, name, chapter_num)
 
 
 def sort_extractions(
-    raw_extractions: dict[int, dict[str, list[str]]],
+    raw_extractions: dict[int, dict[str, list[models.ExtractedEntity]]],
     narrator_name: str | None = None,
 ) -> SortedExtractions:
     """Aggregates, cleans, and deduplicates raw extractions.

@@ -30,7 +30,9 @@ class TestStorageProvider:
         """
         self.author = author
         self.title = title
-        self.extractions: dict[tuple[int, str], dict[str, list[str]]] = {}
+        self.extractions: dict[
+            tuple[int, str], dict[str, list[models.ExtractedEntity]]
+        ] = {}
         self.profiles: dict[
             tuple[int, str, str, str], models.EntityProfile
         ] = {}
@@ -61,7 +63,7 @@ class TestStorageProvider:
     def save_extraction(
         self,
         chapter_num: int,
-        data: dict[str, list[str]],
+        data: dict[str, list[models.ExtractedEntity]],
         book_title: str = "",
     ) -> None:
         """Save extraction data.
@@ -75,7 +77,7 @@ class TestStorageProvider:
 
     def load_extraction(
         self, chapter_num: int, book_title: str = ""
-    ) -> dict[str, list[str]]:
+    ) -> dict[str, list[models.ExtractedEntity]]:
         """Load extraction data.
 
         Args:

@@ -116,7 +116,15 @@ async def test_build_binder_orchestration(
         patch(
             "lorebinders.workflow.extract_book",
             new_callable=AsyncMock,
-            return_value={1: {"Characters": ["Alice"]}},
+            return_value={
+                1: {
+                    "Characters": [
+                        models.ExtractedEntity(
+                            name="Alice", presence_type="literal_character"
+                        )
+                    ]
+                }
+            },
         ),
         patch(
             "lorebinders.workflow.analyze_entities",

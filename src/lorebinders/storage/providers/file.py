@@ -138,7 +138,7 @@ class FilesystemStorage:
     def save_extraction(
         self,
         chapter_num: int,
-        data: dict[str, list[str]],
+        data: dict[str, list[models.ExtractedEntity]],
         book_title: str = "",
     ) -> None:
         """Save extraction data.
@@ -158,13 +158,16 @@ class FilesystemStorage:
             self.extractions_dir, chapter_num, book_title
         )
         path.parent.mkdir(parents=True, exist_ok=True)
+        dump_data = {
+            k: [v.model_dump() for v in val] for k, val in data.items()
+        }
         with path.open(mode="w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(dump_data, f, indent=2)
         logger.debug(f"Saved extraction for chapter {chapter_num}")
 
     def load_extraction(
         self, chapter_num: int, book_title: str = ""
-    ) -> dict[str, list[str]]:
+    ) -> dict[str, list[models.ExtractedEntity]]:
         """Load extraction data.
 
         Args:
@@ -189,7 +192,10 @@ class FilesystemStorage:
             data = json.load(f)
             if not isinstance(data, dict):
                 raise TypeError(f"Expected dict, got {type(data)}")
-            return data
+            return {
+                k: [models.ExtractedEntity.model_validate(v) for v in val]
+                for k, val in data.items()
+            }
 
     def profile_exists(
         self, chapter_num: int, category: str, name: str, book_title: str = ""

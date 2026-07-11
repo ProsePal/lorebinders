@@ -50,7 +50,24 @@ def test_path_raises_when_workspace_not_set() -> None:
 def test_extraction_lifecycle(storage: DBStorage) -> None:
     """Test saving and loading extraction data."""
     chapter_num = 1
-    data = {"Characters": ["Alice", "Bob"], "Locations": ["Paris"]}
+    data = {
+        "Characters": [
+            models.ExtractedEntity(
+                name="Alice", presence_type="literal_character"
+            ),
+            models.ExtractedEntity(
+                name="Bob", presence_type="mentioned_character"
+            ),
+            models.ExtractedEntity(
+                name="Carol", presence_type="allusive_figure"
+            ),
+        ],
+        "Locations": [
+            models.ExtractedEntity(
+                name="Paris", presence_type="literal_character"
+            )
+        ],
+    }
 
     assert not storage.extraction_exists(chapter_num, book_title="Book 1")
 
@@ -58,13 +75,41 @@ def test_extraction_lifecycle(storage: DBStorage) -> None:
     assert storage.extraction_exists(chapter_num, book_title="Book 1")
 
     loaded_data = storage.load_extraction(chapter_num, book_title="Book 1")
-    assert loaded_data == data
+
+    characters = loaded_data["Characters"]
+    assert all(isinstance(c, models.ExtractedEntity) for c in characters)
+    assert [(c.name, c.presence_type) for c in characters] == [
+        ("Alice", "literal_character"),
+        ("Bob", "mentioned_character"),
+        ("Carol", "allusive_figure"),
+    ]
+    locations = loaded_data["Locations"]
+    assert all(isinstance(loc, models.ExtractedEntity) for loc in locations)
+    assert [(loc.name, loc.presence_type) for loc in locations] == [
+        ("Paris", "literal_character"),
+    ]
 
 
 def test_save_extraction_updates_existing(storage: DBStorage) -> None:
     """save_extraction overwrites when record already exists."""
-    storage.save_extraction(1, {"Characters": ["Alice"]}, book_title="Book 1")
-    updated = {"Characters": ["Bob"]}
+    storage.save_extraction(
+        1,
+        {
+            "Characters": [
+                models.ExtractedEntity(
+                    name="Alice", presence_type="literal_character"
+                )
+            ]
+        },
+        book_title="Book 1",
+    )
+    updated = {
+        "Characters": [
+            models.ExtractedEntity(
+                name="Bob", presence_type="literal_character"
+            )
+        ]
+    }
     storage.save_extraction(1, updated, book_title="Book 1")
     assert storage.load_extraction(1, book_title="Book 1") == updated
 
