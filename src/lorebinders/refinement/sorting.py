@@ -26,9 +26,8 @@ def _replace_narrator_in_categories(
     """
     result: dict[str, list[models.ExtractedEntity]] = {
         category: [
-            models.ExtractedEntity(
-                name=NARRATOR_PATTERN.sub(narrator_name, ent.name),
-                presence_type=ent.presence_type,
+            ent.model_copy(
+                update={"name": NARRATOR_PATTERN.sub(narrator_name, ent.name)}
             )
             for ent in entities
         ]

@@ -179,7 +179,11 @@ async def extract_book(
     results = await asyncio.gather(*tasks, return_exceptions=True)
     extracted: dict[int, dict[str, list[models.ExtractedEntity]]] = {}
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
+            if isinstance(
+                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+            ):
+                raise r
             logger.error(f"Extraction task failed: {r}")
             continue
         if isinstance(r, tuple):

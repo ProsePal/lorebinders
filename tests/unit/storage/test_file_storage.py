@@ -75,3 +75,40 @@ def test_save_summary_writes_json(
     assert path.exists()
     data = json.loads(path.read_text())
     assert data["summary"] == "A brave hero."
+
+
+def test_load_extraction_reads_json_as_models(
+    storage: FilesystemStorage, tmp_path: Path
+) -> None:
+    data = {
+        "Characters": [
+            models.ExtractedEntity(
+                name="Alice", presence_type="literal_character"
+            ),
+            models.ExtractedEntity(
+                name="Bob", presence_type="mentioned_character"
+            ),
+            models.ExtractedEntity(
+                name="Carol", presence_type="allusive_figure"
+            ),
+        ]
+    }
+
+    storage.save_extraction(1, data, book_title="Book 1")
+    loaded = storage.load_extraction(1, book_title="Book 1")
+
+    assert isinstance(loaded, dict)
+    assert "Characters" in loaded
+
+    characters = loaded["Characters"]
+    assert len(characters) == 3
+    assert all(
+        isinstance(character, models.ExtractedEntity)
+        for character in characters
+    )
+
+    assert [(c.name, c.presence_type) for c in characters] == [
+        ("Alice", "literal_character"),
+        ("Bob", "mentioned_character"),
+        ("Carol", "allusive_figure"),
+    ]

@@ -56,7 +56,10 @@ def test_extraction_lifecycle(storage: DBStorage) -> None:
                 name="Alice", presence_type="literal_character"
             ),
             models.ExtractedEntity(
-                name="Bob", presence_type="literal_character"
+                name="Bob", presence_type="mentioned_character"
+            ),
+            models.ExtractedEntity(
+                name="Carol", presence_type="allusive_figure"
             ),
         ],
         "Locations": [
@@ -72,7 +75,19 @@ def test_extraction_lifecycle(storage: DBStorage) -> None:
     assert storage.extraction_exists(chapter_num, book_title="Book 1")
 
     loaded_data = storage.load_extraction(chapter_num, book_title="Book 1")
-    assert loaded_data == data
+
+    characters = loaded_data["Characters"]
+    assert all(isinstance(c, models.ExtractedEntity) for c in characters)
+    assert [(c.name, c.presence_type) for c in characters] == [
+        ("Alice", "literal_character"),
+        ("Bob", "mentioned_character"),
+        ("Carol", "allusive_figure"),
+    ]
+    locations = loaded_data["Locations"]
+    assert all(isinstance(loc, models.ExtractedEntity) for loc in locations)
+    assert [(loc.name, loc.presence_type) for loc in locations] == [
+        ("Paris", "literal_character"),
+    ]
 
 
 def test_save_extraction_updates_existing(storage: DBStorage) -> None:

@@ -99,6 +99,10 @@ async def test_agents_flow() -> None:
         assert "Characters" in entities
         assert any(e.name == "Sherlock Holmes" for e in entities["Characters"])
         assert any(e.name == "Dr. Watson" for e in entities["Characters"])
+        assert all(
+            e.presence_type == "literal_character"
+            for e in entities["Characters"]
+        )
 
         analysis_prompt = build_analysis_user_prompt(
             text_chunk,

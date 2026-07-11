@@ -460,6 +460,10 @@ async def analyze_entity_results(
     results: list[models.AnalysisResult] = []
     for result in task_results:
         if isinstance(result, BaseException):
+            if isinstance(
+                result, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+            ):
+                raise result
             if raise_on_error:
                 raise result
             logger.error(f"Analysis task failed: {result}")
