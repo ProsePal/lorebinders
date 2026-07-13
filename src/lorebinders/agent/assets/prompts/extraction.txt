@@ -1,9 +1,40 @@
-Act as an expert Named Entity Recognizer (NER) with a critical focus on precision and alignment with specified categories. Your task is to **extract ALL entities** from the provided text that match EACH **explicitly specified category**—items not matching all specified categories (or not in categories at all) must be omitted. Follow these sharp, performance-optimized rules:
+Act as an expert Named Entity Recognizer (NER) with a critical focus on precision, classification, and alignment with specified categories. Your task is to **extract ALL entities** from the provided text that match EACH **explicitly specified category**—items not matching all specified categories (or not in categories at all) must be omitted.
+
+For each entity, classify its `presence_type` as exactly one of:
+
+1. **literal_character**: A character or entity physically present in the scene, taking action, speaking, or explicitly existing within the diegetic reality. They are "in the room."
+2. **mentioned_character**: A real character in the story universe who is only spoken about, referred to, or thought about in this scene. They exist as a person within the story world but are not physically present.
+3. **allusive_figure**: A metaphorical, historical, philosophical, or mythological figure invoked purely as a rhetorical device, comparison, or quotation source. Not a character in the story's reality.
+
+## Examples
+
+literal_character:
+
+- "Elena drew her sword and stepped forward." → Elena (present, acting)
+- "The old man sat by the fire, humming to himself." → old man (present, described)
+- "Kael said nothing. His jaw was tight." → Kael (present, speaking/non-verbal communication)
+
+mentioned_character:
+
+- "We must find Marcus before the storm hits." → Marcus (spoken about, not present in scene)
+- "She wondered if Lira had made it to the coast." → Lira (thought about, not in scene)
+- "The captain left orders from General Draven." → Draven (referenced via orders, not present)
+
+allusive_figure:
+
+- "He bore his burden like Sisyphus." → Sisyphus (mythological comparison, not in story)
+- "A regular Napoleon, conquering every argument." → Napoleon (historical metaphor)
+- "Her resolve was Promethean—burning bright against the dark." → Promethean/Prometheus (mythological rhetorical device)
+
+## Rules
 
 - **Entity Length**: Strictly 1–2 words; prioritize single words. Reject phrases, multi-token expressions, or longer terms.
-- **Category Fidelity**: Include *only* entities from categories *explicitly listed* at the start of the prompt. Omit all other potential entities, even if text强烈暗示 they fit.
+- **Entity Structure**: Each extracted entity has a `name` (the entity string) and a `presence_type` (one of the three values above).
+- **Category Fidelity**: Include *only* entities from categories *explicitly listed* at the start of the prompt. Omit all other potential entities, even if the text strongly implies they fit.
 - **Character Entities**: Use given names *exactly*—no titles, honorifics ("Dr.," "Ms."), suffixes ("Jr.," "III"), or prefixes. Include all unique names; avoid aliases unless explicitly noted.
 - **Location Entities**: Strip articles ("the," "a," "an"), directional prepositions ("of," "from," "near"), and descriptive adjectives (e.g., "historic," "central"). Keep the core location name (e.g., "Paris" vs. "the central historical heart of Paris").
 - **Additional Categories** (e.g., company, date, organization): Apply tailored rules *exactly* (e.g., companies as unmodified brand names; dates formatted as "day-month-year" if context allows, else "year" if day/month is unspecified).
+- **Non-character categories** (locations, objects, dates, organizations): Default `presence_type` to `literal_character` unless the entity is invoked purely as an allusion or reference.
+- **When uncertain**: If the entity is physically in the scene → `literal_character`. If it is a story-world entity only talked about → `mentioned_character`. If it is invoked for rhetorical effect with no story-world presence → `allusive_figure`.
 
 All rules are enforced—no explanations, context, or extra text allowed.
