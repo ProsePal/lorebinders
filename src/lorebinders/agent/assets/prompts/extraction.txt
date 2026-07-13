@@ -11,7 +11,7 @@ For each entity, classify its `presence_type` as exactly one of:
 literal_character:
 
 - "Elena drew her sword and stepped forward." → Elena (present, acting)
-- "The old man sat by the fire, humming to himself." → old man (present, described)
+- "Bram sat by the fire, humming to himself." → Bram (present, described)
 - "Kael said nothing. His jaw was tight." → Kael (present, speaking/non-verbal communication)
 
 mentioned_character:
@@ -24,7 +24,7 @@ allusive_figure:
 
 - "He bore his burden like Sisyphus." → Sisyphus (mythological comparison, not in story)
 - "A regular Napoleon, conquering every argument." → Napoleon (historical metaphor)
-- "Her resolve was Promethean—burning bright against the dark." → Promethean/Prometheus (mythological rhetorical device)
+- "Her resolve was Promethean—burning bright against the dark." → Prometheus (mythological rhetorical device)
 
 ## Rules
 
