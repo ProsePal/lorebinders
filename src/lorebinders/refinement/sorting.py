@@ -93,8 +93,15 @@ def _deduplicate_entities(
         idx = _find_similar_in_canonical(ent.name, canonical_names)
         if idx == -1:
             canonical.append(ent)
-        elif len(ent.name) > len(canonical[idx].name):
-            canonical[idx] = ent
+        else:
+            is_allusive = (
+                canonical[idx].presence_type == "allusive_figure"
+                or ent.presence_type == "allusive_figure"
+            )
+            if len(ent.name) > len(canonical[idx].name):
+                canonical[idx] = ent
+            if is_allusive:
+                canonical[idx].presence_type = "allusive_figure"
 
     canonical.sort(key=lambda x: x.name)
     return canonical
