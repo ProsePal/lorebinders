@@ -3,7 +3,7 @@ import pytest
 from lorebinders import models
 from lorebinders.refinement.deduplication import is_similar_key
 from lorebinders.refinement.sorting import (
-    _deduplicate_entity_names,
+    _deduplicate_entities,
     sort_extractions,
 )
 
@@ -75,20 +75,77 @@ def test_is_similar_key_complex_matches(key1: str, key2: str) -> None:
         ),
     ],
 )
-def test_deduplicate_entity_names_reduces_list(
+def test_deduplicate_entities_reduces_list(
     names: list[str], expected_len: int
 ) -> None:
-    assert len(_deduplicate_entity_names(names, "Characters")) == expected_len
+    entities = [
+        models.ExtractedEntity(name=n, presence_type="literal_entity")
+        for n in names
+    ]
+    assert len(_deduplicate_entities(entities, "Characters")) == expected_len
 
 
-def test_deduplicate_entity_names_distinct() -> None:
-    result = set(_deduplicate_entity_names(["A", "B"], "Characters"))
+def test_deduplicate_entities_distinct() -> None:
+    entities = [
+        models.ExtractedEntity(name=n, presence_type="literal_entity")
+        for n in ["A", "B"]
+    ]
+    result = set(e.name for e in _deduplicate_entities(entities, "Characters"))
     assert result == {"A", "B"}
 
 
-def test_deduplicate_entity_names_merges_titles() -> None:
-    result = _deduplicate_entity_names(["Dr. Dre", "Dre"], "Characters")
+def test_deduplicate_entities_merges_titles() -> None:
+    entities = [
+        models.ExtractedEntity(name=n, presence_type="literal_entity")
+        for n in ["Dr. Dre", "Dre"]
+    ]
+    result = set(e.name for e in _deduplicate_entities(entities, "Characters"))
     assert "Dre" in result
+
+
+def test_sort_extractions_routes_allusions() -> None:
+    raw_data = {
+        1: {
+            "Characters": [
+                models.ExtractedEntity(
+                    name="Harry Potter", presence_type="allusive_figure"
+                ),
+                models.ExtractedEntity(
+                    name="John Smith", presence_type="literal_entity"
+                ),
+            ],
+            "Locations": [
+                models.ExtractedEntity(
+                    name="Hogwarts", presence_type="allusive_figure"
+                ),
+                models.ExtractedEntity(
+                    name="The Shire", presence_type="mentioned_entity"
+                ),
+            ],
+        },
+    }
+    sorted_data = sort_extractions(raw_data)
+    assert "Harry Potter" in sorted_data["Allusions"]
+    assert "Hogwarts" in sorted_data["Allusions"]
+
+    assert "John Smith" in sorted_data["Characters"]
+    assert "Harry Potter" not in sorted_data.get("Characters", {})
+
+    assert "Shire" in sorted_data["Locations"]
+    assert "Hogwarts" not in sorted_data.get("Locations", {})
+
+
+def test_deduplicate_entities_keeps_allusive_type_on_merge() -> None:
+    entities = [
+        models.ExtractedEntity(name="Harry", presence_type="allusive_figure"),
+        models.ExtractedEntity(
+            name="Harry Potter", presence_type="allusive_figure"
+        ),
+    ]
+    deduped = _deduplicate_entities(entities, "Characters")
+    assert len(deduped) == 1
+    assert deduped[0].name == "Harry Potter"
+    assert deduped[0].presence_type == "allusive_figure"
 
 
 def test_sort_extractions_merges_characters() -> None:
