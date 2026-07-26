@@ -43,6 +43,11 @@ class Settings(BaseSettings):
         "Relative location",
         "Character Familiarity",
     ]
+    allusion_traits: list[str] = [
+        "Invoked by",
+        "Rhetorical significance",
+        "What it reveals about the invoker",
+    ]
 
     confidence_threshold: float = 0.8
     max_concurrency: int = 10

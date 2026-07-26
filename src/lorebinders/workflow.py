@@ -74,6 +74,7 @@ def merge_traits(
     effective: dict[str, list[str]] = {
         "Characters": settings.character_traits.copy(),
         "Locations": settings.location_traits.copy(),
+        "Allusions": settings.allusion_traits.copy(),
     }
 
     for cat, traits in config.custom_traits.items():

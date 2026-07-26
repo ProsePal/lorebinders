@@ -8,10 +8,11 @@ import pytest
 
 from lorebinders import models
 from lorebinders.models import ChapterAppearances
-from lorebinders.settings import get_settings
+from lorebinders.settings import Settings, get_settings
 from lorebinders.workflow import (
     _aggregate_to_binder,
     build_binder,
+    merge_traits,
 )
 
 
@@ -81,6 +82,24 @@ def test_aggregate_to_binder_structure() -> None:
     assert isinstance(book_app, ChapterAppearances)
     assert book_app.chapters[1].traits == {"Role": "Hero"}
     assert book_app.chapters[2].traits == {"Age": "20"}
+
+
+def test_merge_traits_includes_allusion_traits() -> None:
+    """Test that allusions use their configured default traits."""
+    config = models.RunConfiguration(
+        series_title="Test Series",
+        books=[],
+        author_name="Test Author",
+        narrator_config=models.NarratorConfig(),
+    )
+
+    traits = merge_traits(Settings(), config)
+
+    assert traits["Allusions"] == [
+        "Invoked by",
+        "Rhetorical significance",
+        "What it reveals about the invoker",
+    ]
 
 
 @pytest.mark.anyio
