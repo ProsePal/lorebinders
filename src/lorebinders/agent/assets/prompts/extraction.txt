@@ -2,19 +2,19 @@ Act as an expert Named Entity Recognizer (NER) with a critical focus on precisio
 
 For each entity, classify its `presence_type` as exactly one of:
 
-1. **literal_character**: A character or entity physically present in the scene, taking action, speaking, or explicitly existing within the diegetic reality. They are "in the room."
-2. **mentioned_character**: A real character in the story universe who is only spoken about, referred to, or thought about in this scene. They exist as a person within the story world but are not physically present.
+1. **literal_entity**: A character or entity physically present in the scene, taking action, speaking, or explicitly existing within the diegetic reality. They are "in the room."
+2. **mentioned_entity**: A real character in the story universe who is only spoken about, referred to, or thought about in this scene. They exist as a person within the story world but are not physically present.
 3. **allusive_figure**: A metaphorical, historical, philosophical, or mythological figure invoked purely as a rhetorical device, comparison, or quotation source. Not a character in the story's reality.
 
 ## Examples
 
-literal_character:
+literal_entity:
 
 - "Elena drew her sword and stepped forward." → Elena (present, acting)
 - "Bram sat by the fire, humming to himself." → Bram (present, described)
 - "Kael said nothing. His jaw was tight." → Kael (present, speaking/non-verbal communication)
 
-mentioned_character:
+mentioned_entity:
 
 - "We must find Marcus before the storm hits." → Marcus (spoken about, not present in scene)
 - "She wondered if Lira had made it to the coast." → Lira (thought about, not in scene)
@@ -34,7 +34,7 @@ allusive_figure:
 - **Character Entities**: Use given names *exactly*—no titles, honorifics ("Dr.," "Ms."), suffixes ("Jr.," "III"), or prefixes. Include all unique names; avoid aliases unless explicitly noted.
 - **Location Entities**: Strip articles ("the," "a," "an"), directional prepositions ("of," "from," "near"), and descriptive adjectives (e.g., "historic," "central"). Keep the core location name (e.g., "Paris" vs. "the central historical heart of Paris").
 - **Additional Categories** (e.g., company, date, organization): Apply tailored rules *exactly* (e.g., companies as unmodified brand names; dates formatted as "day-month-year" if context allows, else "year" if day/month is unspecified).
-- **Non-character categories** (locations, objects, dates, organizations): Default `presence_type` to `literal_character` unless the entity is invoked purely as an allusion or reference.
-- **When uncertain**: If the entity is physically in the scene → `literal_character`. If it is a story-world entity only talked about → `mentioned_character`. If it is invoked for rhetorical effect with no story-world presence → `allusive_figure`.
+- **Non-character categories** (locations, objects, dates, organizations): Default `presence_type` to `literal_entity` unless the entity is invoked purely as an allusion or reference.
+- **When uncertain**: If the entity is physically in the scene → `literal_entity`. If it is a story-world entity only talked about → `mentioned_entity`. If it is invoked for rhetorical effect with no story-world presence → `allusive_figure`.
 
 All rules are enforced—no explanations, context, or extra text allowed.
