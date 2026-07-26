@@ -69,31 +69,42 @@ def _find_similar_in_canonical(name: str, canonical: list[str]) -> int:
     )
 
 
-def _deduplicate_entity_names(names: list[str], category: str) -> list[str]:
-    """Clean and deduplicate a list of entity names.
+def _deduplicate_entities(
+    entities: list[models.ExtractedEntity], category: str
+) -> list[models.ExtractedEntity]:
+    """Clean and deduplicate a list of entities.
 
     Args:
-        names: List of raw entity names.
+        entities: List of raw extracted entities.
         category: The entity category.
 
     Returns:
-        A deduplicated list of cleaned entity names.
+        A deduplicated list of cleaned entities.
     """
-    cleaned = [
-        c
-        for n in names
-        if (c := clean_entity_name(n, category)) and len(c) >= 1
-    ]
+    cleaned: list[models.ExtractedEntity] = []
+    for ent in entities:
+        c = clean_entity_name(ent.name, category)
+        if c and len(c) >= 1:
+            cleaned.append(ent.model_copy(update={"name": c}))
 
-    canonical: list[str] = []
-    for name in cleaned:
-        idx = _find_similar_in_canonical(name, canonical)
+    canonical: list[models.ExtractedEntity] = []
+    for ent in cleaned:
+        canonical_names = [c.name for c in canonical]
+        idx = _find_similar_in_canonical(ent.name, canonical_names)
         if idx == -1:
-            canonical.append(name)
-        elif len(name) > len(canonical[idx]):
-            canonical[idx] = name
+            canonical.append(ent)
+        else:
+            is_allusive = (
+                canonical[idx].presence_type == "allusive_figure"
+                or ent.presence_type == "allusive_figure"
+            )
+            if len(ent.name) > len(canonical[idx].name):
+                canonical[idx] = ent
+            if is_allusive:
+                canonical[idx].presence_type = "allusive_figure"
 
-    return sorted(list(set(canonical)))
+    canonical.sort(key=lambda x: x.name)
+    return canonical
 
 
 def _process_chapter_extractions(
@@ -103,10 +114,16 @@ def _process_chapter_extractions(
 ) -> None:
     """Process all categories in a chapter extraction."""
     for category, entities in categories.items():
-        names = [e.name for e in entities]
-        deduped = _deduplicate_entity_names(names, category)
-        for name in deduped:
-            _update_aggregated(aggregated, category, name, chapter_num)
+        deduped = _deduplicate_entities(entities, category)
+        for ent in deduped:
+            target_category = (
+                "Allusions"
+                if ent.presence_type == "allusive_figure"
+                else category
+            )
+            _update_aggregated(
+                aggregated, target_category, ent.name, chapter_num
+            )
 
 
 def sort_extractions(
