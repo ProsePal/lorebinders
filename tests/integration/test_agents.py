@@ -35,11 +35,11 @@ async def test_agents_flow() -> None:
                                     "entities": [
                                         {
                                             "name": "Sherlock Holmes",
-                                            "presence_type": "literal_character",  # noqa: E501
+                                            "presence_type": "literal_entity",
                                         },
                                         {
                                             "name": "Dr. Watson",
-                                            "presence_type": "literal_character",  # noqa: E501
+                                            "presence_type": "literal_entity",
                                         },
                                     ],
                                 }
@@ -100,8 +100,7 @@ async def test_agents_flow() -> None:
         assert any(e.name == "Sherlock Holmes" for e in entities["Characters"])
         assert any(e.name == "Dr. Watson" for e in entities["Characters"])
         assert all(
-            e.presence_type == "literal_character"
-            for e in entities["Characters"]
+            e.presence_type == "literal_entity" for e in entities["Characters"]
         )
 
         analysis_prompt = build_analysis_user_prompt(

@@ -120,7 +120,7 @@ async def test_build_binder_orchestration(
                 1: {
                     "Characters": [
                         models.ExtractedEntity(
-                            name="Alice", presence_type="literal_character"
+                            name="Alice", presence_type="literal_entity"
                         )
                     ]
                 }

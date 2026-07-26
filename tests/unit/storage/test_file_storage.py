@@ -32,11 +32,9 @@ def test_save_extraction_writes_json(
     data = {
         "Characters": [
             models.ExtractedEntity(
-                name="Alice", presence_type="literal_character"
+                name="Alice", presence_type="literal_entity"
             ),
-            models.ExtractedEntity(
-                name="Bob", presence_type="literal_character"
-            ),
+            models.ExtractedEntity(name="Bob", presence_type="literal_entity"),
         ]
     }
     storage.save_extraction(1, data, book_title="Book 1")
@@ -44,8 +42,8 @@ def test_save_extraction_writes_json(
     assert path.exists()
     assert json.loads(path.read_text()) == {
         "Characters": [
-            {"name": "Alice", "presence_type": "literal_character"},
-            {"name": "Bob", "presence_type": "literal_character"},
+            {"name": "Alice", "presence_type": "literal_entity"},
+            {"name": "Bob", "presence_type": "literal_entity"},
         ]
     }
 
@@ -83,10 +81,10 @@ def test_load_extraction_reads_json_as_models(
     data = {
         "Characters": [
             models.ExtractedEntity(
-                name="Alice", presence_type="literal_character"
+                name="Alice", presence_type="literal_entity"
             ),
             models.ExtractedEntity(
-                name="Bob", presence_type="mentioned_character"
+                name="Bob", presence_type="mentioned_entity"
             ),
             models.ExtractedEntity(
                 name="Carol", presence_type="allusive_figure"
@@ -108,7 +106,7 @@ def test_load_extraction_reads_json_as_models(
     )
 
     assert [(c.name, c.presence_type) for c in characters] == [
-        ("Alice", "literal_character"),
-        ("Bob", "mentioned_character"),
+        ("Alice", "literal_entity"),
+        ("Bob", "mentioned_entity"),
         ("Carol", "allusive_figure"),
     ]

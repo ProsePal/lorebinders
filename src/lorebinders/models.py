@@ -176,7 +176,7 @@ class ExtractedEntity(BaseModel):
 
     name: str
     presence_type: Literal[
-        "literal_character", "mentioned_character", "allusive_figure"
+        "literal_entity", "mentioned_entity", "allusive_figure"
     ]
 
 

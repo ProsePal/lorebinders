@@ -96,33 +96,33 @@ def test_sort_extractions_merges_characters() -> None:
         1: {
             "Characters": [
                 models.ExtractedEntity(
-                    name="John", presence_type="literal_character"
+                    name="John", presence_type="literal_entity"
                 ),
                 models.ExtractedEntity(
-                    name="John Smith", presence_type="literal_character"
+                    name="John Smith", presence_type="literal_entity"
                 ),
             ],
             "Locations": [
                 models.ExtractedEntity(
-                    name="Shire", presence_type="literal_character"
+                    name="Shire", presence_type="literal_entity"
                 ),
                 models.ExtractedEntity(
-                    name="The Shire", presence_type="literal_character"
+                    name="The Shire", presence_type="literal_entity"
                 ),
             ],
         },
         2: {
             "Characters": [
                 models.ExtractedEntity(
-                    name="John Smith", presence_type="literal_character"
+                    name="John Smith", presence_type="literal_entity"
                 ),
                 models.ExtractedEntity(
-                    name="Jane", presence_type="literal_character"
+                    name="Jane", presence_type="literal_entity"
                 ),
             ],
             "Locations": [
                 models.ExtractedEntity(
-                    name="Shire", presence_type="literal_character"
+                    name="Shire", presence_type="literal_entity"
                 ),
             ],
         },
@@ -139,13 +139,13 @@ def test_sort_extractions_handles_narrator() -> None:
         1: {
             "Characters": [
                 models.ExtractedEntity(
-                    name="I", presence_type="literal_character"
+                    name="I", presence_type="literal_entity"
                 ),
                 models.ExtractedEntity(
-                    name="Me", presence_type="literal_character"
+                    name="Me", presence_type="literal_entity"
                 ),
                 models.ExtractedEntity(
-                    name="John", presence_type="literal_character"
+                    name="John", presence_type="literal_entity"
                 ),
             ],
         }

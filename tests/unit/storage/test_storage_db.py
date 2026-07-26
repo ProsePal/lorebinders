@@ -53,19 +53,17 @@ def test_extraction_lifecycle(storage: DBStorage) -> None:
     data = {
         "Characters": [
             models.ExtractedEntity(
-                name="Alice", presence_type="literal_character"
+                name="Alice", presence_type="literal_entity"
             ),
             models.ExtractedEntity(
-                name="Bob", presence_type="mentioned_character"
+                name="Bob", presence_type="mentioned_entity"
             ),
             models.ExtractedEntity(
                 name="Carol", presence_type="allusive_figure"
             ),
         ],
         "Locations": [
-            models.ExtractedEntity(
-                name="Paris", presence_type="literal_character"
-            )
+            models.ExtractedEntity(name="Paris", presence_type="literal_entity")
         ],
     }
 
@@ -79,14 +77,14 @@ def test_extraction_lifecycle(storage: DBStorage) -> None:
     characters = loaded_data["Characters"]
     assert all(isinstance(c, models.ExtractedEntity) for c in characters)
     assert [(c.name, c.presence_type) for c in characters] == [
-        ("Alice", "literal_character"),
-        ("Bob", "mentioned_character"),
+        ("Alice", "literal_entity"),
+        ("Bob", "mentioned_entity"),
         ("Carol", "allusive_figure"),
     ]
     locations = loaded_data["Locations"]
     assert all(isinstance(loc, models.ExtractedEntity) for loc in locations)
     assert [(loc.name, loc.presence_type) for loc in locations] == [
-        ("Paris", "literal_character"),
+        ("Paris", "literal_entity"),
     ]
 
 
@@ -97,7 +95,7 @@ def test_save_extraction_updates_existing(storage: DBStorage) -> None:
         {
             "Characters": [
                 models.ExtractedEntity(
-                    name="Alice", presence_type="literal_character"
+                    name="Alice", presence_type="literal_entity"
                 )
             ]
         },
@@ -105,9 +103,7 @@ def test_save_extraction_updates_existing(storage: DBStorage) -> None:
     )
     updated = {
         "Characters": [
-            models.ExtractedEntity(
-                name="Bob", presence_type="literal_character"
-            )
+            models.ExtractedEntity(name="Bob", presence_type="literal_entity")
         ]
     }
     storage.save_extraction(1, updated, book_title="Book 1")

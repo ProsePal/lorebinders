@@ -20,10 +20,10 @@ async def test_extraction_agent_run_async_and_prompt() -> None:
                 {
                     "category": "Characters",
                     "entities": [
-                        {"name": "Hero", "presence_type": "literal_character"},
+                        {"name": "Hero", "presence_type": "literal_entity"},
                         {
                             "name": "Villain",
-                            "presence_type": "literal_character",
+                            "presence_type": "literal_entity",
                         },
                     ],
                 }
@@ -49,10 +49,10 @@ async def test_extraction_agent_run_async_and_prompt() -> None:
         assert result.to_dict() == {
             "Characters": [
                 models.ExtractedEntity(
-                    name="Hero", presence_type="literal_character"
+                    name="Hero", presence_type="literal_entity"
                 ),
                 models.ExtractedEntity(
-                    name="Villain", presence_type="literal_character"
+                    name="Villain", presence_type="literal_entity"
                 ),
             ]
         }
