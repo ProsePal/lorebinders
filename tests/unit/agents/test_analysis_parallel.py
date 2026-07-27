@@ -5,15 +5,37 @@ import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from lorebinders.agent.analysis import analyze_entities, analyze_entity_results
+from lorebinders.agent.analysis import (
+    _prepare_run_targets,
+    analyze_entities,
+    analyze_entity_results,
+)
 from lorebinders.agent.factory import create_analysis_agent
-from lorebinders.models import AgentDeps, Book, Chapter
+from lorebinders.models import AgentDeps, Book, CategoryTarget, Chapter
 from lorebinders.settings import Settings
 from tests.utils import TestStorageProvider
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore::DeprecationWarning:google.genai.types"
 )
+
+
+def test_prepare_run_targets_uses_allusion_traits() -> None:
+    """Test that allusions use mapped traits instead of fallback traits."""
+    targets: list[CategoryTarget] = []
+    traits = [
+        "Invoked by",
+        "Rhetorical significance",
+        "What it reveals about the invoker",
+    ]
+
+    _prepare_run_targets(
+        targets, "Allusions", ["Icarus"], {"Allusions": traits}
+    )
+
+    assert targets == [
+        CategoryTarget(name="Allusions", entities=["Icarus"], traits=traits)
+    ]
 
 
 @pytest.mark.anyio

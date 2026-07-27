@@ -74,6 +74,7 @@ def merge_traits(
     effective: dict[str, list[str]] = {
         "Characters": settings.character_traits.copy(),
         "Locations": settings.location_traits.copy(),
+        "Allusions": settings.allusion_traits.copy(),
     }
 
     for cat, traits in config.custom_traits.items():
@@ -84,6 +85,35 @@ def merge_traits(
             effective[cat] = []
 
     return effective
+
+
+def extraction_categories(
+    settings: Settings, config: models.RunConfiguration
+) -> list[str]:
+    """Build the category list the extraction agent should search for.
+
+    "Allusions" is deliberately excluded: it is never extracted directly,
+    only derived during sorting from entities whose presence_type is
+    "allusive_figure".
+
+    Args:
+        settings: Application settings.
+        config: Run configuration.
+
+    Returns:
+        A list of category names to pass to the extraction agent.
+    """
+    ordered = settings.categories + config.custom_categories
+    ordered.extend(config.custom_traits.keys())
+
+    seen: set[str] = set()
+    categories: list[str] = []
+    for cat in ordered:
+        if cat not in seen:
+            seen.add(cat)
+            categories.append(cat)
+
+    return categories
 
 
 def _aggregate_to_binder(
@@ -173,7 +203,7 @@ async def build_binder(
             book,
             ext_agent,
             deps,
-            list(traits.keys()),
+            extraction_categories(settings, config),
             config,
             storage,
             progress,
