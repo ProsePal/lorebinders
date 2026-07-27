@@ -10,7 +10,15 @@ from lorebinders.agent_settings import get_model_settings
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from environment variables.
+
+    ``categories`` is the canonical list of categories the extraction
+    agent searches for. "Allusions" is intentionally absent: it is a
+    derived category, populated during sorting from entities whose
+    presence_type is "allusive_figure", never extracted directly.
+    ``allusion_traits`` supplies the trait questions used once entities
+    have landed in that derived category during analysis.
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="LOREBINDERS_",

@@ -12,6 +12,7 @@ from lorebinders.settings import Settings, get_settings
 from lorebinders.workflow import (
     _aggregate_to_binder,
     build_binder,
+    extraction_categories,
     merge_traits,
 )
 
@@ -102,6 +103,37 @@ def test_merge_traits_includes_allusion_traits() -> None:
     ]
 
 
+def test_extraction_categories_excludes_allusions() -> None:
+    """Test that Allusions is never sent to the extraction agent."""
+    config = models.RunConfiguration(
+        series_title="Test Series",
+        books=[],
+        author_name="Test Author",
+        narrator_config=models.NarratorConfig(),
+    )
+
+    categories = extraction_categories(Settings(), config)
+
+    assert categories == ["Characters", "Locations"]
+    assert "Allusions" not in categories
+
+
+def test_extraction_categories_includes_custom_categories_and_traits() -> None:
+    """Test that custom categories and custom trait keys are included."""
+    config = models.RunConfiguration(
+        series_title="Test Series",
+        books=[],
+        author_name="Test Author",
+        narrator_config=models.NarratorConfig(),
+        custom_categories=["Factions"],
+        custom_traits={"Objects": ["Origin"]},
+    )
+
+    categories = extraction_categories(Settings(), config)
+
+    assert categories == ["Characters", "Locations", "Factions", "Objects"]
+
+
 @pytest.mark.anyio
 async def test_build_binder_orchestration(
     temp_workspace: Path,
@@ -144,7 +176,7 @@ async def test_build_binder_orchestration(
                     ]
                 }
             },
-        ),
+        ) as mock_extract,
         patch(
             "lorebinders.workflow.analyze_entities",
             new_callable=AsyncMock,
@@ -163,6 +195,8 @@ async def test_build_binder_orchestration(
     mock_ingest.assert_called_once_with(
         "Chapter 1\nAlice content", run_config.books[0].title
     )
+    extraction_call_categories = mock_extract.call_args.args[3]
+    assert "Allusions" not in extraction_call_categories
     mock_report.assert_called_once()
     assert (
         result
