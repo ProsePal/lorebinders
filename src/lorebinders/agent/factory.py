@@ -157,7 +157,7 @@ async def run_agent_async(
         raise
 
 
-def init_extraction_model(settings: Settings) -> Model:
+def init_extraction_model(settings: "Settings") -> Model:
     """Initialize the extraction model.
 
     Args:
@@ -240,7 +240,7 @@ def build_extraction_user_prompt(
     return "\n".join(prompt)
 
 
-def init_analysis_model(settings: Settings) -> Model:
+def init_analysis_model(settings: "Settings") -> Model:
     """Initialize the analysis model.
 
     Args:
@@ -317,7 +317,7 @@ def build_analysis_user_prompt(
     return "\n".join(prompt)
 
 
-def init_alias_resolution_model(settings: Settings) -> Model:
+def init_alias_resolution_model(settings: "Settings") -> Model:
     """Initialize the alias resolution model.
 
     Args:
@@ -388,7 +388,7 @@ def build_alias_resolution_user_prompt(
     return "\n".join(prompt)
 
 
-def init_summarization_model(settings: Settings) -> Model:
+def init_summarization_model(settings: "Settings") -> Model:
     """Initialize the summarization model.
 
     Args:
