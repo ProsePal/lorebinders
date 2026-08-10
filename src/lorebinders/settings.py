@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     presence_type is "allusive_figure", never extracted directly.
     ``allusion_traits`` supplies the trait questions used once entities
     have landed in that derived category during analysis.
+    ``alias_resolution_enabled`` gates the LLM alias resolution pass that
+    runs after rule-based deduplication; set it false to skip the extra
+    model calls on cost-sensitive runs.
     """
 
     model_config = SettingsConfigDict(
@@ -30,10 +33,14 @@ class Settings(BaseSettings):
     extraction_model: str = "openrouter:bytedance/seed-1.6-flash"
     analysis_model: str = "openrouter:deepseek/deepseek-v3.2"
     summarization_model: str = "openrouter:bytedance/seed-1.6-flash"
+    alias_resolution_model: str = "openrouter:deepseek/deepseek-v3.2"
 
     extraction_fallback_model: str | None = None
     analysis_fallback_model: str | None = None
     summarization_fallback_model: str | None = None
+    alias_resolution_fallback_model: str | None = None
+
+    alias_resolution_enabled: bool = True
 
     workspace_base_path: Path = Path(__file__).parent / "work"
     db_url: str = "sqlite:///:memory:"

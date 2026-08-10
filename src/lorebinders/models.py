@@ -223,6 +223,32 @@ class AnalysisResult(BaseModel):
     traits: list[AnalyzedTrait]
 
 
+class AliasGroup(BaseModel):
+    """A set of entity names the model judged to be one entity."""
+
+    canonical_name: str = Field(
+        description="The supplied name to keep for the merged entity"
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Other supplied names in the same category that refer to the "
+            "entity named by canonical_name"
+        ),
+    )
+
+
+class AliasResolution(BaseModel):
+    """Result of an alias resolution pass over a single category."""
+
+    groups: list[AliasGroup] = Field(
+        default_factory=list,
+        description=(
+            "Alias groups found; entities that stand alone are omitted"
+        ),
+    )
+
+
 class SummarizerResult(BaseModel):
     """Result of entity summarization."""
 

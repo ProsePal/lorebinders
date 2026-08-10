@@ -16,6 +16,7 @@ from pydantic_ai.tools import AgentDepsT
 from lorebinders.agent_settings import provider_factory
 from lorebinders.models import (
     AgentDeps,
+    AliasResolution,
     AnalysisResult,
     CategoryTarget,
     ExtractionResult,
@@ -313,6 +314,77 @@ def build_analysis_user_prompt(
     prompt = [f"## CONTEXT\n{context_text}\n", "## TASKS"]
     for category in categories:
         _add_category_to_prompt(prompt, category)
+    return "\n".join(prompt)
+
+
+def init_alias_resolution_model(settings: Settings) -> Model:
+    """Initialize the alias resolution model.
+
+    Args:
+        settings: Application settings.
+
+    Returns:
+        The initialized alias resolution model.
+    """
+    return infer_model(settings.alias_resolution_model, provider_factory)
+
+
+def create_alias_resolution_agent(
+    settings: "Settings | None" = None,
+    output_type: "OutputSpec[AliasResolution] | None" = None,
+) -> Agent[AgentDeps, AliasResolution]:
+    """Create a configured alias resolution agent.
+
+    Args:
+        settings: Optional application settings.
+        output_type: Optional output spec override. Defaults to plain
+            ``AliasResolution`` (tool-based structured output). Pass
+            ``PromptedOutput(AliasResolution)`` to use prompt-based JSON
+            extraction instead, which works with models that do not support
+            tool calling.
+
+    Returns:
+        A PydanticAI Agent configured for entity alias resolution.
+    """
+    _settings = settings or get_settings()
+    _output: OutputSpec[AliasResolution] = (
+        output_type if output_type is not None else AliasResolution
+    )
+
+    agent: Agent[AgentDeps, AliasResolution] = create_agent(
+        init_alias_resolution_model(_settings),
+        deps_type=AgentDeps,
+        output_type=_output,
+        fallback=_settings.alias_resolution_fallback_model,
+    )
+
+    @agent.system_prompt
+    def _alias_resolution_system_prompt(ctx: RunContext[AgentDeps]) -> str:
+        return ctx.deps.prompt_loader("alias_resolution.txt")
+
+    return agent
+
+
+def build_alias_resolution_user_prompt(
+    category: str, entries: list[tuple[str, str]]
+) -> str:
+    """Build the user prompt for alias resolution within one category.
+
+    Args:
+        category: The category whose entities are being resolved.
+        entries: Pairs of entity name and a short excerpt of its notes.
+
+    Returns:
+        The formatted user prompt string.
+    """
+    prompt = [f"## CATEGORY: {category}", "", "## ENTITIES"]
+    prompt.extend(
+        f"- {name}: {context}" if context else f"- {name}"
+        for name, context in entries
+    )
+    prompt.append(
+        "\n## TASK\nGroup the names above that refer to the same entity."
+    )
     return "\n".join(prompt)
 
 
