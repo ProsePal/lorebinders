@@ -130,8 +130,13 @@ def _merge_appearances(
             target[key] = value
 
 
-def _merge_entities(target: EntityRecord, source: EntityRecord) -> None:
-    """Merge traits and summaries from source entity into target entity."""
+def merge_entities(target: EntityRecord, source: EntityRecord) -> None:
+    """Merge traits and summaries from source entity into target entity.
+
+    Args:
+        target: The entity record that survives the merge, updated in-place.
+        source: The entity record being folded into ``target``.
+    """
     _merge_appearances(target.appearances, source.appearances)
 
     if source.summary:
@@ -153,7 +158,7 @@ def _resolve_category_entities(category: CategoryRecord) -> None:
         if is_similar_key(n1, n2):
             to_merge, to_keep = prioritize_keys(n1, n2)
 
-            _merge_entities(
+            merge_entities(
                 category.entities[to_keep], category.entities[to_merge]
             )
             duplicates_to_remove.add(to_merge)

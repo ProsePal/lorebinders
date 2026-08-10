@@ -50,7 +50,8 @@ Specialized agents handle specific stages of the pipeline:
 
 Post-extraction logic ensures data quality:
 - **Normalization**: Standardizes name formats and casing.
-- **Deduplication**: Merges aliases and similar entity names.
+- **Deduplication**: Merges aliases and similar entity names by rule.
+- **Alias Resolution**: An LLM pass that merges semantic aliases the rules cannot match ("The Dark Lord" and "Sauron"). Set `LOREBINDERS_ALIAS_RESOLUTION_ENABLED=false` to skip it on cost-sensitive runs.
 - **Cleaning**: Removes invalid or hallucinatory data from LLM outputs.
 
 ## 💾 Storage Layer (`src/lorebinders/storage/`)

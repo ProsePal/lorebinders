@@ -12,13 +12,14 @@ from lorebinders import models
 from lorebinders.agent.analysis import analyze_entities
 from lorebinders.agent.extraction import extract_book
 from lorebinders.agent.factory import (
+    create_alias_resolution_agent,
     create_analysis_agent,
     create_extraction_agent,
     create_summarization_agent,
     load_prompt_from_assets,
 )
 from lorebinders.agent.summarization import summarize_binder
-from lorebinders.refinement import refine_binder
+from lorebinders.refinement import refine_binder_async
 from lorebinders.refinement.cleaning import clean_traits
 from lorebinders.refinement.conversion import convert_to_text, ingest
 from lorebinders.refinement.sorting import sort_extractions
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 _ExtAgent: TypeAlias = Agent[models.AgentDeps, models.ExtractionResult]
 _AnaAgent: TypeAlias = Agent[models.AgentDeps, list[models.AnalysisResult]]
 _SumAgent: TypeAlias = Agent[models.AgentDeps, models.SummarizerResult]
+_AliasAgent: TypeAlias = Agent[models.AgentDeps, models.AliasResolution]
 
 
 def _add_custom_traits(
@@ -150,6 +152,7 @@ async def build_binder(
     extraction_agent: _ExtAgent | None = None,
     analysis_agent: _AnaAgent | None = None,
     summarization_agent: _SumAgent | None = None,
+    alias_agent: _AliasAgent | None = None,
     provider: type[StorageProvider] = FilesystemStorage,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
@@ -161,6 +164,8 @@ async def build_binder(
         extraction_agent: Optional agent override.
         analysis_agent: Optional agent override.
         summarization_agent: Optional agent override.
+        alias_agent: Optional agent override for alias resolution. Ignored
+            when alias resolution is disabled in settings.
         provider: Storage provider class.
 
     Returns:
@@ -174,6 +179,11 @@ async def build_binder(
     ext_agent = extraction_agent or create_extraction_agent(settings)
     ana_agent = analysis_agent or create_analysis_agent(settings)
     sum_agent = summarization_agent or create_summarization_agent(settings)
+    ali_agent = (
+        alias_agent or create_alias_resolution_agent(settings)
+        if settings.alias_resolution_enabled
+        else None
+    )
 
     traits = merge_traits(settings, config)
     storage = get_storage(provider)
@@ -243,7 +253,13 @@ async def build_binder(
     raw_binder = _aggregate_to_binder(
         all_profiles, tracking=config.appearance_tracking
     )
-    binder = refine_binder(raw_binder, config.narrator_config.name)
+    binder = await refine_binder_async(
+        raw_binder,
+        config.narrator_config.name,
+        ali_agent,
+        deps,
+        on_observe,
+    )
 
     total_ent = sum(len(c.entities) for c in binder.categories.values())
     models.emit_observation(

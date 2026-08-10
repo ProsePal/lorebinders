@@ -23,7 +23,8 @@ src/lorebinders/
 │   ├── __cli__.py        # Typer/Rich CLI implementation.
 │   └── configuration.py  # CLI-specific configuration and validation.
 ├── refinement/           # Post-processing and data cleaning logic.
-│   ├── cleaning.py       # Data sanitization and hallunication removal.
+│   ├── alias_resolution.py # LLM merging of semantic aliases.
+│   ├── cleaning.py       # Data sanitization and hallucination removal.
 │   ├── conversion.py     # Data format conversions.
 │   ├── deduplication.py  # Alias merging and entity resolution.
 │   ├── normalization.py  # Name and trait normalization.
@@ -54,7 +55,7 @@ The "source of truth" for all structured data. LoreBinders uses strictly typed h
 Pydantic-AI powered agents that interact with LLMs. Each agent has a specific scope (extraction, analysis, or summarization) and utilizes structured outputs to maintain data consistency.
 
 ### Refinement Engine (`refinement/`)
-A collection of logic to ensure the data produced by LLMs is normalized, deduplicated, and free of common AI artifacts.
+A collection of logic to ensure the data produced by LLMs is normalized, deduplicated, and free of common AI artifacts. Rule-based deduplication is followed by an optional LLM alias resolution pass that merges names the rules cannot match, such as an epithet and the character it names.
 
 ### Storage Abstraction (`storage/`)
 A protocol-based system that allows the engine to persist data to either local files or a relational database without changing core logic.
