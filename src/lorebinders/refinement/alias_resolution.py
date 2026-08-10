@@ -84,9 +84,9 @@ def entity_context(entity: EntityRecord) -> str:
 def apply_alias_group(category: CategoryRecord, group: AliasGroup) -> int:
     """Merge one alias group into its canonical entity in-place.
 
-    Names the model invented, already-merged names, and self-references are
-    ignored rather than treated as errors, so a partially hallucinated
-    response still contributes its usable groups.
+    Names the model invented, already-merged names, repeated aliases within
+    the group, and self-references are ignored rather than treated as errors,
+    so a partially hallucinated response still contributes its usable groups.
 
     Args:
         category: The category record to update.
@@ -111,7 +111,11 @@ def apply_alias_group(category: CategoryRecord, group: AliasGroup) -> int:
         if name is None or name == canonical:
             logger.debug("Ignoring unusable alias %r", alias)
             continue
-        merge_entities(target, category.entities.pop(name))
+        source = category.entities.pop(name, None)
+        if source is None:
+            logger.debug("Ignoring repeated alias %r", alias)
+            continue
+        merge_entities(target, source)
         merged += 1
 
     return merged

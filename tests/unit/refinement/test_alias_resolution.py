@@ -161,6 +161,38 @@ def test_apply_alias_group_ignores_unknown_and_self_aliases() -> None:
     assert set(category.entities) == {"Sauron", "The Dark Lord", "Frodo"}
 
 
+def test_apply_alias_group_ignores_duplicate_aliases_in_group() -> None:
+    binder = _binder_with_aliases()
+    category = binder.categories["Characters"]
+
+    merged = apply_alias_group(
+        category,
+        AliasGroup(
+            canonical_name="Sauron",
+            aliases=["The Dark Lord", "The Dark Lord"],
+        ),
+    )
+
+    assert merged == 1
+    assert set(category.entities) == {"Sauron", "Frodo"}
+
+
+def test_apply_alias_group_ignores_case_variant_duplicate_aliases() -> None:
+    binder = _binder_with_aliases()
+    category = binder.categories["Characters"]
+
+    merged = apply_alias_group(
+        category,
+        AliasGroup(
+            canonical_name="Sauron",
+            aliases=["The Dark Lord", " the dark lord "],
+        ),
+    )
+
+    assert merged == 1
+    assert set(category.entities) == {"Sauron", "Frodo"}
+
+
 def test_apply_alias_group_ignores_already_merged_alias() -> None:
     binder = _binder_with_aliases()
     category = binder.categories["Characters"]
