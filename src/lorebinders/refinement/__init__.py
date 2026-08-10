@@ -54,7 +54,12 @@ async def refine_binder_async(
 ) -> Binder:
     """Execute the refinement pipeline including LLM alias resolution.
 
-    Flow: Clean -> Resolve -> Resolve Aliases -> Resolve Allusions.
+    Flow: Clean -> Resolve -> Resolve Allusions -> Resolve Aliases.
+
+    Allusions are resolved before aliases because allusion resolution matches
+    each "Invoked by" attribution against the entity names produced by the
+    rule-based pass. Merging aliases first removes the names those
+    attributions refer to, which would drop the alluded traits.
 
     The alias pass is skipped when no agent or dependencies are supplied, or
     when ``LOREBINDERS_ALIAS_RESOLUTION_ENABLED`` is false, which leaves the
@@ -70,22 +75,19 @@ async def refine_binder_async(
     Returns:
         The cleaned, deduplicated Binder model with allusions resolved.
     """
-    resolved = _apply_rules(binder, narrator_name)
+    logger.info("Resolving allusions")
+    resolved = resolve_allusions(_apply_rules(binder, narrator_name))
 
     if (
-        alias_agent is not None
-        and deps is not None
-        and deps.settings.alias_resolution_enabled
+        alias_agent is None
+        or deps is None
+        or not deps.settings.alias_resolution_enabled
     ):
-        logger.info("Starting alias resolution phase")
-        resolved = await resolve_aliases(
-            resolved, alias_agent, deps, on_observe
-        )
-    else:
         logger.info("Skipping alias resolution phase")
+        return resolved
 
-    logger.info("Resolving allusions")
-    return resolve_allusions(resolved)
+    logger.info("Starting alias resolution phase")
+    return await resolve_aliases(resolved, alias_agent, deps, on_observe)
 
 
 __all__ = ["refine_binder", "refine_binder_async"]

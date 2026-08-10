@@ -112,6 +112,40 @@ async def test_refine_binder_async_resolves_aliases() -> None:
 
 
 @pytest.mark.anyio
+async def test_refine_binder_async_resolves_allusions_before_aliases() -> None:
+    binder = _binder_with_semantic_aliases()
+    binder.add_appearance(
+        "Allusions",
+        "Morgoth",
+        2,
+        "Book 1",
+        {
+            "Invoked by": "Dark Lord",
+            "Rhetorical significance": "Claims an older tyranny",
+        },
+    )
+    agent = create_alias_resolution_agent()
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda name: f"mock {name}"
+    )
+
+    with agent.override(model=_alias_model([])):
+        result = await refine_binder_async(binder, None, agent, deps)
+
+    sauron = result.categories["Characters"].entities["Sauron"]
+    traits = [
+        appearance.traits
+        for value in sauron.appearances.values()
+        if isinstance(value, ChapterAppearances)
+        for appearance in value.chapters.values()
+    ]
+    assert any(
+        trait.get("Rhetorical significance") == "Claims an older tyranny"
+        for trait in traits
+    )
+
+
+@pytest.mark.anyio
 async def test_refine_binder_async_skips_alias_pass_when_disabled() -> None:
     calls: list[int] = []
     agent = create_alias_resolution_agent()

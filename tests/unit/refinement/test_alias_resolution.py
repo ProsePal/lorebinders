@@ -82,6 +82,28 @@ def test_entity_context_falls_back_to_traits() -> None:
     assert "Aliases: Annatar, Gorthaur" in context
 
 
+def test_entity_context_collapses_newlines_in_summary() -> None:
+    entity = EntityRecord(
+        name="Sauron",
+        category="Characters",
+        summary="The Dark Lord of Mordor.\n\n- Wields the One Ring.",
+    )
+
+    assert (
+        entity_context(entity)
+        == "The Dark Lord of Mordor. - Wields the One Ring."
+    )
+
+
+def test_entity_context_collapses_newlines_in_traits() -> None:
+    entity = EntityRecord(name="Sauron", category="Characters")
+    entity.appearances["Book 1_ch1"] = SingleAppearance(
+        appearance=EntityAppearance(traits={"Role": "Dark power\nand tyrant"})
+    )
+
+    assert entity_context(entity) == "Role: Dark power and tyrant"
+
+
 def test_entity_context_truncates_long_notes() -> None:
     entity = EntityRecord(
         name="Sauron", category="Characters", summary="x" * 1000

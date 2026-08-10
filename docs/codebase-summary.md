@@ -24,7 +24,7 @@ src/lorebinders/
 │   └── configuration.py  # CLI-specific configuration and validation.
 ├── refinement/           # Post-processing and data cleaning logic.
 │   ├── alias_resolution.py # LLM merging of semantic aliases.
-│   ├── cleaning.py       # Data sanitization and hallunication removal.
+│   ├── cleaning.py       # Data sanitization and hallucination removal.
 │   ├── conversion.py     # Data format conversions.
 │   ├── deduplication.py  # Alias merging and entity resolution.
 │   ├── normalization.py  # Name and trait normalization.

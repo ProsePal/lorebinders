@@ -61,6 +61,11 @@ def _appearance_lines(value: AppearanceValue) -> list[str]:
             return []
 
 
+def _single_line(text: str) -> str:
+    """Collapse whitespace so an excerpt cannot break the prompt's list."""
+    return " ".join(text.split())
+
+
 def entity_context(entity: EntityRecord) -> str:
     """Condense an entity's notes into a short excerpt for the model.
 
@@ -71,14 +76,14 @@ def entity_context(entity: EntityRecord) -> str:
         A truncated single-line excerpt, empty when nothing is recorded.
     """
     if entity.summary:
-        return entity.summary[:_MAX_CONTEXT_CHARS]
+        return _single_line(entity.summary)[:_MAX_CONTEXT_CHARS]
 
     lines = [
         line
         for value in entity.appearances.values()
         for line in _appearance_lines(value)
     ]
-    return "; ".join(lines)[:_MAX_CONTEXT_CHARS]
+    return _single_line("; ".join(lines))[:_MAX_CONTEXT_CHARS]
 
 
 def apply_alias_group(category: CategoryRecord, group: AliasGroup) -> int:
