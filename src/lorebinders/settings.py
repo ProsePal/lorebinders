@@ -67,10 +67,9 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.8
     max_concurrency: int = 10
 
-    @property
-    def extractor_model_settings(self) -> ModelSettings:
-        """Set reasoning level for the extraction agent."""
-        model_provider = self.extraction_model.split(":")[0]
+    def model_settings_for(self, model: str) -> ModelSettings:
+        """Set reasoning level for a given model."""
+        model_provider = model.split(":")[0]
         return get_model_settings(model_provider)
 
 

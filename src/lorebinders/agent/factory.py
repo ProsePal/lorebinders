@@ -195,7 +195,7 @@ def create_extraction_agent(
         init_extraction_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
-        model_settings=_settings.extractor_model_settings,
+        model_settings=_settings.model_settings_for(_settings.extraction_model),
         fallback=_settings.extraction_fallback_model,
     )
 
@@ -278,6 +278,7 @@ def create_analysis_agent(
         init_analysis_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
+        model_settings=_settings.model_settings_for(_settings.analysis_model),
         fallback=_settings.analysis_fallback_model,
     )
 
@@ -355,6 +356,9 @@ def create_alias_resolution_agent(
         init_alias_resolution_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
+        model_settings=_settings.model_settings_for(
+            _settings.alias_resolution_model
+        ),
         fallback=_settings.alias_resolution_fallback_model,
     )
 
@@ -426,6 +430,9 @@ def create_summarization_agent(
         init_summarization_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
+        model_settings=_settings.model_settings_for(
+            _settings.summarization_model
+        ),
         fallback=_settings.summarization_fallback_model,
     )
 
