@@ -1,3 +1,5 @@
+from typing import Any
+
 from lorebinders.agent.factory import (
     create_alias_resolution_agent,
     create_analysis_agent,
@@ -7,7 +9,7 @@ from lorebinders.agent.factory import (
 from lorebinders.settings import get_settings
 
 
-def _get_settings(agent):
+def _get_settings(agent: Any) -> Any:
     model = agent.model
     if hasattr(model, "models"):
         model = model.models[0]
@@ -15,7 +17,7 @@ def _get_settings(agent):
     return getattr(model, "settings", getattr(model, "_settings", None))
 
 
-def test_factories_carry_model_settings():
+def test_factories_carry_model_settings() -> None:
     settings = get_settings()
 
     extraction_agent = create_extraction_agent(settings)
@@ -33,7 +35,7 @@ def test_factories_carry_model_settings():
     assert _get_settings(summary_agent) is not None
 
 
-def test_unprefixed_model_string():
+def test_unprefixed_model_string() -> None:
     settings = get_settings()
     settings.extraction_model = "z-ai/glm-4.5"  # no prefix
     settings.extraction_fallback_model = None
