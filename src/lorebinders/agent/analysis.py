@@ -533,10 +533,23 @@ async def analyze_entities(
 
     results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
     profiles: list[models.EntityProfile] = []
+    failed_count = 0
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
+            if isinstance(
+                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+            ):
+                raise r
             logger.error(f"Analysis task failed: {r}")
+            failed_count += 1
             continue
         if isinstance(r, list):
             profiles.extend(r)
+
+    if len(chapter_tasks) > 0 and failed_count / len(chapter_tasks) > 0.2:
+        raise RuntimeError(
+            f"Analysis failed: {failed_count}/{len(chapter_tasks)} tasks "
+            "failed, exceeding 20% threshold."
+        )
+
     return profiles
