@@ -13,25 +13,29 @@ from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 
 def _openai_settings() -> ModelSettings:
-    return OpenAIChatModelSettings(openai_reasoning_effort="low")
+    return OpenAIChatModelSettings(openai_reasoning_effort="low", timeout=600.0)
 
 
 def _anthropic_settings() -> ModelSettings:
-    return AnthropicModelSettings(anthropic_thinking={"type": "disabled"})
+    return AnthropicModelSettings(
+        anthropic_thinking={"type": "disabled"}, timeout=600.0
+    )
 
 
 def _google_settings() -> ModelSettings:
     return GoogleModelSettings(
-        google_thinking_config={"include_thoughts": False}
+        google_thinking_config={"include_thoughts": False}, timeout=600.0
     )
 
 
 def _groq_settings() -> ModelSettings:
-    return GroqModelSettings(groq_reasoning_format="hidden")
+    return GroqModelSettings(groq_reasoning_format="hidden", timeout=600.0)
 
 
 def _openrouter_settings() -> ModelSettings:
-    return OpenRouterModelSettings(openrouter_reasoning={"effort": "low"})
+    return OpenRouterModelSettings(
+        openrouter_reasoning={"effort": "low"}, timeout=600.0
+    )
 
 
 def get_model_settings(model_provider: str) -> ModelSettings:
@@ -55,7 +59,7 @@ def get_model_settings(model_provider: str) -> ModelSettings:
     if model_provider in configs:
         return configs[model_provider]()
 
-    return ModelSettings()
+    return ModelSettings(timeout=600.0)
 
 
 def provider_factory(provider: str) -> Provider[Any]:
