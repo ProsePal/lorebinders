@@ -77,13 +77,27 @@ def create_agent(
         A configured PydanticAI Agent instance.
     """
     logger.debug(f"Creating agent for model: {model}")
+    
+    if isinstance(model, str):
+        model = infer_model(model, provider_factory)
+        
+    if isinstance(model, Model) and model_settings is not None:
+        existing_settings = getattr(model, "settings", None)
+        if existing_settings is not None:
+            # Merge with existing settings
+            merged = dict(existing_settings)
+            merged.update(model_settings)
+            model._settings = merged  # type: ignore
+        else:
+            model._settings = model_settings  # type: ignore
+            
     if fallback:
         model = FallbackModel(model, fallback, fallback_on=_is_moderation_error)
+        
     return Agent(
         model,
         deps_type=deps_type,
         output_type=output_type,
-        model_settings=model_settings,
     )
 
 
