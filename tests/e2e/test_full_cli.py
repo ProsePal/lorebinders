@@ -17,6 +17,7 @@ from lorebinders.models import (
     AnalysisResult,
     AnalyzedTrait,
     CategoryEntities,
+    ExtractedEntity,
     ExtractionResult,
     SummarizerResult,
 )
@@ -61,7 +62,13 @@ def test_e2e_ingestion_flow(
                     content=ExtractionResult(
                         results=[
                             CategoryEntities(
-                                category="Locations", entities=["Night"]
+                                category="Locations",
+                                entities=[
+                                    ExtractedEntity(
+                                        name="Night",
+                                        presence_type="literal_entity",
+                                    )
+                                ],
                             )
                         ]
                     ).model_dump_json()

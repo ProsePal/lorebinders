@@ -546,10 +546,16 @@ async def analyze_entities(
         if isinstance(r, list):
             profiles.extend(r)
 
-    if len(chapter_tasks) > 0 and failed_count / len(chapter_tasks) > 0.2:
-        raise RuntimeError(
-            f"Analysis failed: {failed_count}/{len(chapter_tasks)} tasks "
-            "failed, exceeding 20% threshold."
-        )
+    if len(chapter_tasks) > 0:
+        ratio = failed_count / len(chapter_tasks)
+        if (
+            ratio > deps.settings.failure_threshold
+            and failed_count >= deps.settings.failure_threshold_min_count
+        ):
+            raise RuntimeError(
+                f"Analysis failed: {failed_count}/{len(chapter_tasks)} tasks "
+                f"failed, exceeding "
+                f"{deps.settings.failure_threshold * 100:.0f}% threshold."
+            )
 
     return profiles

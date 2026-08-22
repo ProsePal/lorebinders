@@ -282,8 +282,14 @@ async def summarize_binder(
             )
             failed_count += 1
 
-    if len(chapter_tasks) > 0 and failed_count / len(chapter_tasks) > 0.2:
-        raise RuntimeError(
-            f"Summarization failed: {failed_count}/{len(chapter_tasks)} tasks "
-            "failed, exceeding 20% threshold."
-        )
+    if len(chapter_tasks) > 0:
+        ratio = failed_count / len(chapter_tasks)
+        if (
+            ratio > deps.settings.failure_threshold
+            and failed_count >= deps.settings.failure_threshold_min_count
+        ):
+            raise RuntimeError(
+                f"Summarization failed: {failed_count}/{len(chapter_tasks)} "
+                f"tasks failed, exceeding "
+                f"{deps.settings.failure_threshold * 100:.0f}% threshold."
+            )

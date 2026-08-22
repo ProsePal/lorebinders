@@ -192,10 +192,16 @@ async def extract_book(
             chapter_num, data = r
             extracted[chapter_num] = data
 
-    if len(tasks) > 0 and failed_count / len(tasks) > 0.2:
-        raise RuntimeError(
-            f"Extraction failed: {failed_count}/{len(tasks)} tasks "
-            "failed, exceeding 20% threshold."
-        )
+    if len(tasks) > 0:
+        ratio = failed_count / len(tasks)
+        if (
+            ratio > deps.settings.failure_threshold
+            and failed_count >= deps.settings.failure_threshold_min_count
+        ):
+            raise RuntimeError(
+                f"Extraction failed: {failed_count}/{len(tasks)} tasks failed, "
+                f"exceeding {deps.settings.failure_threshold * 100:.0f}% "
+                "threshold."
+            )
 
     return extracted
