@@ -4,7 +4,7 @@ from lorebinders.agent.factory import create_extraction_agent
 from lorebinders.settings import Settings
 
 
-def test_fallback_model_does_not_inherit_primary_settings():
+def test_fallback_model_does_not_inherit_primary_settings():  # type: ignore
     """A cross-provider fallback must not receive the primary's model_settings.
 
     Regression test for the leak where model_settings attached at the Agent
@@ -27,8 +27,8 @@ def test_fallback_model_does_not_inherit_primary_settings():
         or "openrouter_reasoning" not in fallback.settings
     )
 
-    primary_merged, _ = primary.prepare_request(None, _fake_request_params())
-    fallback_merged, _ = fallback.prepare_request(None, _fake_request_params())
+    primary_merged, _ = primary.prepare_request(None, _fake_request_params())  # type: ignore
+    fallback_merged, _ = fallback.prepare_request(None, _fake_request_params())  # type: ignore
 
     assert primary_merged is not None
     assert "extra_body" in primary_merged
@@ -39,7 +39,7 @@ def test_fallback_model_does_not_inherit_primary_settings():
     assert "extra_body" not in (fallback_merged or {})
 
 
-def _fake_request_params():
+def _fake_request_params():  # type: ignore
     from pydantic_ai.models import ModelRequestParameters
 
     return ModelRequestParameters()

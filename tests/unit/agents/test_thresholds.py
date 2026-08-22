@@ -33,14 +33,14 @@ def run_config() -> models.RunConfiguration:
 
 
 @pytest.fixture
-def mock_storage():
+def mock_storage():  # type: ignore
     from unittest.mock import MagicMock
 
     return MagicMock()
 
 
 @pytest.mark.anyio
-async def test_extraction_threshold_raises(base_deps, run_config, mock_storage):
+async def test_extraction_threshold_raises(base_deps, run_config, mock_storage):  # type: ignore
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -76,7 +76,7 @@ async def test_extraction_threshold_raises(base_deps, run_config, mock_storage):
 
 
 @pytest.mark.anyio
-async def test_extraction_threshold_passes(base_deps, run_config, mock_storage):
+async def test_extraction_threshold_passes(base_deps, run_config, mock_storage):  # type: ignore
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -116,7 +116,7 @@ async def test_extraction_threshold_passes(base_deps, run_config, mock_storage):
 
 
 @pytest.mark.anyio
-async def test_analysis_threshold_raises(base_deps, run_config, mock_storage):
+async def test_analysis_threshold_raises(base_deps, run_config, mock_storage):  # type: ignore
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -152,7 +152,7 @@ async def test_analysis_threshold_raises(base_deps, run_config, mock_storage):
 
 
 @pytest.mark.anyio
-async def test_analysis_threshold_passes(base_deps, run_config, mock_storage):
+async def test_analysis_threshold_passes(base_deps, run_config, mock_storage):  # type: ignore
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -182,7 +182,7 @@ async def test_analysis_threshold_passes(base_deps, run_config, mock_storage):
 
 
 @pytest.mark.anyio
-async def test_summarization_threshold_raises(
+async def test_summarization_threshold_raises(  # type: ignore
     base_deps, run_config, mock_storage
 ):
     binder = models.Binder(
@@ -227,7 +227,7 @@ async def test_summarization_threshold_raises(
 
 
 @pytest.mark.anyio
-async def test_summarization_threshold_passes(
+async def test_summarization_threshold_passes(  # type: ignore
     base_deps, run_config, mock_storage
 ):
     binder = models.Binder(

@@ -172,8 +172,12 @@ async def build_binder(
         The Path to the generated story bible report.
     """
     settings = get_settings()
+    from lorebinders.agent.spend import Spend
+
     deps = models.AgentDeps(
-        settings=settings, prompt_loader=load_prompt_from_assets
+        settings=settings,
+        prompt_loader=load_prompt_from_assets,
+        spend=Spend(limit=settings.spend_ceiling),
     )
 
     ext_agent = extraction_agent or create_extraction_agent(settings)

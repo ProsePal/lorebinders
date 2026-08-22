@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from lorebinders.types import EntityTraits as EntityTraits
 
 if TYPE_CHECKING:
+    from lorebinders.agent.spend import Spend
     from lorebinders.settings import Settings
 
 
@@ -19,6 +20,7 @@ class AgentDeps:
 
     settings: "Settings"
     prompt_loader: Callable[[str], str]
+    spend: "Spend | None" = None
 
 
 class NarratorConfig(BaseModel):

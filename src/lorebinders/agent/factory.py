@@ -160,9 +160,18 @@ async def run_agent_async(
                     "model": model,
                     "input_tokens": usage.input_tokens,
                     "output_tokens": usage.output_tokens,
-                    "total_tokens": usage.input_tokens + usage.output_tokens,
+                    "total_tokens": (
+                        (usage.input_tokens or 0) + (usage.output_tokens or 0)
+                    ),
                 },
             )
+            if hasattr(deps, "spend") and deps.spend is not None:
+                from lorebinders.agent.spend import estimate_cost
+
+                cost = estimate_cost(
+                    model, usage.input_tokens or 0, usage.output_tokens or 0
+                )
+                await deps.spend.add(cost)
         except Exception as e:
             logger.warning(f"Failed to collect token usage metrics: {e}")
         return res.output
