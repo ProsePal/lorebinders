@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     def model_settings_for(self, model: str) -> ModelSettings:
         """Set reasoning level for a given model."""
-        model_provider = model.split(":")[0]
+        model_provider = model.split(":")[0] if ":" in model else "openrouter"
         return get_model_settings(model_provider)
 
 

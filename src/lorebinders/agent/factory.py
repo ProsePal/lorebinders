@@ -116,9 +116,17 @@ async def run_agent_async(
         f"Running agent with model {model}",
         meta,
     )
+    import copy
+
+    safe_settings = (
+        copy.deepcopy(agent.model_settings) if agent.model_settings else {}
+    )
+    if model_settings:
+        safe_settings.update(copy.deepcopy(model_settings))
+
     try:
         res = await agent.run(
-            user_prompt, deps=deps, model_settings=model_settings
+            user_prompt, deps=deps, model_settings=safe_settings
         )
         logger.debug("Agent run completed successfully")
         emit_observation(
@@ -157,6 +165,10 @@ async def run_agent_async(
         raise
 
 
+def _ensure_prefix(model: str) -> str:
+    return model if ":" in model or model == "test" else f"openrouter:{model}"
+
+
 def init_extraction_model(settings: "Settings") -> Model:
     """Initialize the extraction model.
 
@@ -166,7 +178,9 @@ def init_extraction_model(settings: "Settings") -> Model:
     Returns:
         The initialized extraction model.
     """
-    return infer_model(settings.extraction_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.extraction_model), provider_factory
+    )
 
 
 def create_extraction_agent(
@@ -249,7 +263,9 @@ def init_analysis_model(settings: "Settings") -> Model:
     Returns:
         The initialized analysis model.
     """
-    return infer_model(settings.analysis_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.analysis_model), provider_factory
+    )
 
 
 def create_analysis_agent(
@@ -327,7 +343,9 @@ def init_alias_resolution_model(settings: "Settings") -> Model:
     Returns:
         The initialized alias resolution model.
     """
-    return infer_model(settings.alias_resolution_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.alias_resolution_model), provider_factory
+    )
 
 
 def create_alias_resolution_agent(
@@ -401,7 +419,9 @@ def init_summarization_model(settings: "Settings") -> Model:
     Returns:
         The initialized summarization model.
     """
-    return infer_model(settings.summarization_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.summarization_model), provider_factory
+    )
 
 
 def create_summarization_agent(
