@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -33,14 +34,18 @@ def run_config() -> models.RunConfiguration:
 
 
 @pytest.fixture
-def mock_storage():  # type: ignore
+def mock_storage() -> Any:
     from unittest.mock import MagicMock
 
     return MagicMock()
 
 
 @pytest.mark.anyio
-async def test_extraction_threshold_raises(base_deps, run_config, mock_storage):  # type: ignore
+async def test_extraction_threshold_raises(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -76,7 +81,11 @@ async def test_extraction_threshold_raises(base_deps, run_config, mock_storage):
 
 
 @pytest.mark.anyio
-async def test_extraction_threshold_passes(base_deps, run_config, mock_storage):  # type: ignore
+async def test_extraction_threshold_passes(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -116,7 +125,11 @@ async def test_extraction_threshold_passes(base_deps, run_config, mock_storage):
 
 
 @pytest.mark.anyio
-async def test_analysis_threshold_raises(base_deps, run_config, mock_storage):  # type: ignore
+async def test_analysis_threshold_raises(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -152,7 +165,11 @@ async def test_analysis_threshold_raises(base_deps, run_config, mock_storage):  
 
 
 @pytest.mark.anyio
-async def test_analysis_threshold_passes(base_deps, run_config, mock_storage):  # type: ignore
+async def test_analysis_threshold_passes(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -182,9 +199,11 @@ async def test_analysis_threshold_passes(base_deps, run_config, mock_storage):  
 
 
 @pytest.mark.anyio
-async def test_summarization_threshold_raises(  # type: ignore
-    base_deps, run_config, mock_storage
-):
+async def test_summarization_threshold_raises(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
     binder = models.Binder(
         categories={
             "Characters": models.CategoryRecord(
@@ -227,9 +246,11 @@ async def test_summarization_threshold_raises(  # type: ignore
 
 
 @pytest.mark.anyio
-async def test_summarization_threshold_passes(  # type: ignore
-    base_deps, run_config, mock_storage
-):
+async def test_summarization_threshold_passes(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
     binder = models.Binder(
         categories={
             "Characters": models.CategoryRecord(

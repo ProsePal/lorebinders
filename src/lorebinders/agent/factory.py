@@ -119,7 +119,13 @@ async def run_agent_async(
     Returns:
         The output data from the agent run.
     """
-    model = str(agent.model) or "unknown"
+    if hasattr(agent.model, "model_name"):
+        model = getattr(agent.model, "model_name", str(agent.model))
+    elif isinstance(agent.model, FallbackModel):
+        model = getattr(agent.model.models[0], "model_name", str(agent.model))
+    else:
+        model = str(agent.model) or "unknown"
+
     logger.debug(f"Running agent (async) with model: {model}")
     meta: dict[str, str | int | float | bool | None] = {"model": model}
     emit_observation(
@@ -142,22 +148,34 @@ async def run_agent_async(
             user_prompt, deps=deps, model_settings=safe_settings
         )
         logger.debug("Agent run completed successfully")
+
+        actual_model = model
+        try:
+            if hasattr(res, "all_messages") and res.all_messages():
+                last_msg = res.all_messages()[-1]
+                if hasattr(last_msg, "model_name") and last_msg.model_name:
+                    actual_model = last_msg.model_name
+        except Exception:
+            pass
+
         emit_observation(
             on_observe,
             ObservationType.AGENT_RUN_COMPLETED,
             "agent",
-            f"Agent run completed with model {model}",
+            f"Agent run completed with model {actual_model}",
             meta,
         )
+
+        cost: float | None = None
         try:
             usage = res.usage()
             emit_observation(
                 on_observe,
                 ObservationType.METRIC,
                 "agent",
-                f"Token usage for model {model}",
+                f"Token usage for model {actual_model}",
                 {
-                    "model": model,
+                    "model": actual_model,
                     "input_tokens": usage.input_tokens,
                     "output_tokens": usage.output_tokens,
                     "total_tokens": (
@@ -165,15 +183,21 @@ async def run_agent_async(
                     ),
                 },
             )
-            if hasattr(deps, "spend") and deps.spend is not None:
+            if deps.spend is not None:
                 from lorebinders.agent.spend import estimate_cost
 
                 cost = estimate_cost(
-                    model, usage.input_tokens or 0, usage.output_tokens or 0
+                    actual_model,
+                    usage.input_tokens or 0,
+                    usage.output_tokens or 0,
                 )
-                await deps.spend.add(cost)
         except Exception as e:
             logger.warning(f"Failed to collect token usage metrics: {e}")
+
+        if cost is not None and deps.spend is not None:
+            await deps.spend.add(cost)
+            logger.info(f"Cumulative spend: ${deps.spend.total:.4f}")
+
         return res.output
     except Exception as e:
         logger.error(f"Agent run failed: {e}")
