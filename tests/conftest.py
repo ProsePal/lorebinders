@@ -4,6 +4,7 @@ from collections.abc import Generator
 import pytest
 
 os.environ.setdefault("OPENAI_MODEL", "gpt-4o-mini")
+os.environ.setdefault("OPENAI_API_KEY", "mock_key")
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -17,4 +18,5 @@ def pytest_configure(config: pytest.Config) -> None:
 def mock_env_vars() -> Generator[None, None, None]:
     """Mock environment variables to prevent pydantic-ai provider errors."""
     os.environ["OPENROUTER_API_KEY"] = "mock_key"
+    os.environ.setdefault("OPENAI_API_KEY", "mock_key")
     yield

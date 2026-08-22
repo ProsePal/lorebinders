@@ -77,13 +77,26 @@ def create_agent(
         A configured PydanticAI Agent instance.
     """
     logger.debug(f"Creating agent for model: {model}")
+
+    if isinstance(model, str):
+        model = infer_model(model, provider_factory)
+
+    if isinstance(model, Model) and model_settings is not None:
+        existing_settings = model.settings
+        merged: ModelSettings = (
+            {**existing_settings, **model_settings}
+            if existing_settings
+            else model_settings
+        )
+        model._settings = merged
+
     if fallback:
         model = FallbackModel(model, fallback, fallback_on=_is_moderation_error)
+
     return Agent(
         model,
         deps_type=deps_type,
         output_type=output_type,
-        model_settings=model_settings,
     )
 
 
@@ -116,9 +129,17 @@ async def run_agent_async(
         f"Running agent with model {model}",
         meta,
     )
+    import copy
+
+    safe_settings = (
+        copy.deepcopy(agent.model_settings) if agent.model_settings else {}
+    )
+    if model_settings:
+        safe_settings.update(copy.deepcopy(model_settings))
+
     try:
         res = await agent.run(
-            user_prompt, deps=deps, model_settings=model_settings
+            user_prompt, deps=deps, model_settings=safe_settings
         )
         logger.debug("Agent run completed successfully")
         emit_observation(
@@ -157,6 +178,10 @@ async def run_agent_async(
         raise
 
 
+def _ensure_prefix(model: str) -> str:
+    return model if ":" in model or model == "test" else f"openrouter:{model}"
+
+
 def init_extraction_model(settings: "Settings") -> Model:
     """Initialize the extraction model.
 
@@ -166,7 +191,9 @@ def init_extraction_model(settings: "Settings") -> Model:
     Returns:
         The initialized extraction model.
     """
-    return infer_model(settings.extraction_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.extraction_model), provider_factory
+    )
 
 
 def create_extraction_agent(
@@ -195,7 +222,7 @@ def create_extraction_agent(
         init_extraction_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
-        model_settings=_settings.extractor_model_settings,
+        model_settings=_settings.model_settings_for(_settings.extraction_model),
         fallback=_settings.extraction_fallback_model,
     )
 
@@ -249,7 +276,9 @@ def init_analysis_model(settings: "Settings") -> Model:
     Returns:
         The initialized analysis model.
     """
-    return infer_model(settings.analysis_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.analysis_model), provider_factory
+    )
 
 
 def create_analysis_agent(
@@ -278,6 +307,7 @@ def create_analysis_agent(
         init_analysis_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
+        model_settings=_settings.model_settings_for(_settings.analysis_model),
         fallback=_settings.analysis_fallback_model,
     )
 
@@ -326,7 +356,9 @@ def init_alias_resolution_model(settings: "Settings") -> Model:
     Returns:
         The initialized alias resolution model.
     """
-    return infer_model(settings.alias_resolution_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.alias_resolution_model), provider_factory
+    )
 
 
 def create_alias_resolution_agent(
@@ -355,6 +387,9 @@ def create_alias_resolution_agent(
         init_alias_resolution_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
+        model_settings=_settings.model_settings_for(
+            _settings.alias_resolution_model
+        ),
         fallback=_settings.alias_resolution_fallback_model,
     )
 
@@ -397,7 +432,9 @@ def init_summarization_model(settings: "Settings") -> Model:
     Returns:
         The initialized summarization model.
     """
-    return infer_model(settings.summarization_model, provider_factory)
+    return infer_model(
+        _ensure_prefix(settings.summarization_model), provider_factory
+    )
 
 
 def create_summarization_agent(
@@ -426,6 +463,9 @@ def create_summarization_agent(
         init_summarization_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
+        model_settings=_settings.model_settings_for(
+            _settings.summarization_model
+        ),
         fallback=_settings.summarization_fallback_model,
     )
 
