@@ -264,12 +264,32 @@ async def summarize_binder(
         chapter_tasks.append(task)
 
     results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
+    failed_count = 0
     for i, res in enumerate(results):
         entity, _ = tasks[i]
-        if isinstance(res, Exception):
+        if isinstance(res, BaseException):
+            if isinstance(
+                res, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+            ):
+                raise res
             logger.error(f"Summarization failed for {entity.name}: {res}")
-            entity.summary = "Error during summarization."
+            failed_count += 1
         elif isinstance(res, str):
             entity.summary = res
         else:
-            entity.summary = "Unexpected error."
+            logger.error(
+                f"Summarization failed for {entity.name}: Unexpected error."
+            )
+            failed_count += 1
+
+    if len(chapter_tasks) > 0:
+        ratio = failed_count / len(chapter_tasks)
+        if (
+            ratio > deps.settings.failure_threshold
+            and failed_count >= deps.settings.failure_threshold_min_count
+        ):
+            raise RuntimeError(
+                f"Summarization failed: {failed_count}/{len(chapter_tasks)} "
+                f"tasks failed, exceeding "
+                f"{deps.settings.failure_threshold * 100:.0f}% threshold."
+            )

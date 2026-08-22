@@ -42,6 +42,9 @@ class Settings(BaseSettings):
 
     alias_resolution_enabled: bool = True
 
+    failure_threshold: float = 0.2
+    failure_threshold_min_count: int = 2
+
     workspace_base_path: Path = Path(__file__).parent / "work"
     db_url: str = "sqlite:///:memory:"
 

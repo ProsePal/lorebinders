@@ -178,6 +178,7 @@ async def extract_book(
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     extracted: dict[int, dict[str, list[models.ExtractedEntity]]] = {}
+    failed_count = 0
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
@@ -185,9 +186,22 @@ async def extract_book(
             ):
                 raise r
             logger.error(f"Extraction task failed: {r}")
+            failed_count += 1
             continue
         if isinstance(r, tuple):
             chapter_num, data = r
             extracted[chapter_num] = data
+
+    if len(tasks) > 0:
+        ratio = failed_count / len(tasks)
+        if (
+            ratio > deps.settings.failure_threshold
+            and failed_count >= deps.settings.failure_threshold_min_count
+        ):
+            raise RuntimeError(
+                f"Extraction failed: {failed_count}/{len(tasks)} tasks failed, "
+                f"exceeding {deps.settings.failure_threshold * 100:.0f}% "
+                "threshold."
+            )
 
     return extracted
