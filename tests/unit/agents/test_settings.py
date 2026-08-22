@@ -37,4 +37,4 @@ def test_settings_config_openrouter() -> None:
 def test_settings_config_unknown_fallback() -> None:
     settings = settings_config("mistral")
 
-    assert settings == {}
+    assert settings == {"timeout": 600.0}
