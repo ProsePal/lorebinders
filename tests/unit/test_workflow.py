@@ -205,3 +205,46 @@ async def test_build_binder_orchestration(
         / "Test_Series"
         / "Test_Series_story_bible.pdf"
     )
+
+
+@pytest.mark.anyio
+async def test_build_binder_forwards_user_id(
+    temp_workspace: Path,
+    book_file: Path,
+) -> None:
+    """Test that config.user_id is forwarded to storage.set_workspace."""
+    config = models.RunConfiguration(
+        series_title="Test Series",
+        books=[models.BookInput(path=book_file, title="Test Book")],
+        author_name="Test Author",
+        user_id="user_123",
+        narrator_config=models.NarratorConfig(),
+    )
+    fake_book = _make_fake_book()
+    fake_storage = MagicMock()
+    fake_storage.path = (
+        temp_workspace / "user_123" / "Test_Author" / "Test_Series"
+    )
+
+    with (
+        patch("lorebinders.workflow.convert_to_text", return_value=""),
+        patch("lorebinders.workflow.ingest", return_value=fake_book),
+        patch(
+            "lorebinders.workflow.extract_book",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "lorebinders.workflow.analyze_entities",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("lorebinders.workflow.summarize_binder", new_callable=AsyncMock),
+        patch("lorebinders.workflow.generate_pdf_report"),
+        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
+    ):
+        await build_binder(config)
+
+    fake_storage.set_workspace.assert_called_once_with(
+        "Test Author", "Test Series", user_id="user_123"
+    )

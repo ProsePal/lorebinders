@@ -125,7 +125,7 @@ class DBStorage:
             title: The title of the book.
             user_id: Optional user ID.
         """
-        path = workspace.ensure_workspace(author, title)
+        path = workspace.ensure_workspace(author, title, user_id=user_id)
         self._path = path
         self._workspace_id = str(path)
 

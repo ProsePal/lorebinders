@@ -100,7 +100,7 @@ class FilesystemStorage:
             title: The title of the book.
             user_id: Optional user ID.
         """
-        self._path = workspace.ensure_workspace(author, title)
+        self._path = workspace.ensure_workspace(author, title, user_id=user_id)
         self.extractions_dir = self._path / "extractions"
         self.profiles_dir = self._path / "profiles"
         self.summaries_dir = self._path / "summaries"
