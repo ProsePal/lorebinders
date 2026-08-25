@@ -191,7 +191,9 @@ async def build_binder(
 
     traits = merge_traits(settings, config)
     storage = get_storage(provider)
-    storage.set_workspace(config.author_name, config.series_title)
+    storage.set_workspace(
+        config.author_name, config.series_title, user_id=config.user_id
+    )
 
     all_profiles: list[models.EntityProfile] = []
 
