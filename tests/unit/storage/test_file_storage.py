@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -110,3 +111,18 @@ def test_load_extraction_reads_json_as_models(
         ("Bob", "mentioned_entity"),
         ("Carol", "allusive_figure"),
     ]
+
+
+def test_filesystem_storage_keying(tmp_path: Path) -> None:
+    s = FilesystemStorage()
+
+    with patch("lorebinders.storage.workspace.get_settings") as mock_settings:
+        mock_settings.return_value.workspace_base_path = tmp_path
+
+        # With user_id
+        s.set_workspace("test_author", "test_title", user_id="user_123")
+        assert s.path == tmp_path / "user_123" / "test_author" / "test_title"
+
+        # Without user_id (CLI path)
+        s.set_workspace("test_author", "test_title")
+        assert s.path == tmp_path / "test_author" / "test_title"

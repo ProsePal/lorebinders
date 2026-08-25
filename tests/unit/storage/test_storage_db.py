@@ -1,6 +1,7 @@
 """Unit tests for the DB-backed storage provider."""
 
 from collections.abc import Generator
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -232,3 +233,21 @@ def test_save_book_updates_existing(storage: DBStorage) -> None:
 
     assert len(rows) == 1
     assert rows[0].text == "New text."
+
+
+def test_db_storage_keying(tmp_path: Path) -> None:
+    with patch("lorebinders.storage.workspace.get_settings") as mock_settings:
+        mock_settings.return_value.workspace_base_path = tmp_path
+
+        s = DBStorage("sqlite:///:memory:")
+
+        # With user_id
+        s.set_workspace("test_author", "test_title", user_id="user_123")
+        assert s.path == tmp_path / "user_123" / "test_author" / "test_title"
+        expected_path = tmp_path / "user_123" / "test_author" / "test_title"
+        assert s._workspace_id == str(expected_path)
+
+        # Without user_id (CLI path)
+        s.set_workspace("test_author", "test_title")
+        assert s.path == tmp_path / "test_author" / "test_title"
+        assert s._workspace_id == str(tmp_path / "test_author" / "test_title")

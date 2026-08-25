@@ -115,14 +115,17 @@ class DBStorage:
             raise RuntimeError("Workspace not set. Call set_workspace() first.")
         return self._workspace_id
 
-    def set_workspace(self, author: str, title: str) -> None:
+    def set_workspace(
+        self, author: str, title: str, user_id: str | None = None
+    ) -> None:
         """Set the workspace context.
 
         Args:
             author: The name of the author.
             title: The title of the book.
+            user_id: Optional user ID.
         """
-        path = workspace.ensure_workspace(author, title)
+        path = workspace.ensure_workspace(author, title, user_id=user_id)
         self._path = path
         self._workspace_id = str(path)
 

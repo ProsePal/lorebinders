@@ -21,12 +21,15 @@ JsonValue: TypeAlias = (
 class TestStorageProvider:
     """In-memory storage provider for testing purposes."""
 
-    def set_workspace(self, author: str, title: str) -> None:
+    def set_workspace(
+        self, author: str, title: str, user_id: str | None = None
+    ) -> None:
         """Set the workspace directories.
 
         Args:
             author: The name of the author.
             title: The title of the book.
+            user_id: The user ID.
         """
         self.author = author
         self.title = title

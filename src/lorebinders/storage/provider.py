@@ -7,12 +7,15 @@ from lorebinders import models
 class StorageProvider(Protocol):
     """Protocol for LoreBinders storage backends."""
 
-    def set_workspace(self, author: str, title: str) -> None:
+    def set_workspace(
+        self, author: str, title: str, user_id: str | None = None
+    ) -> None:
         """Set the workspace context.
 
         Args:
             author: The name of the book author.
             title: The title of the book.
+            user_id: Optional user ID for the workspace.
         """
         ...
 

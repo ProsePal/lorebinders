@@ -90,14 +90,17 @@ class FilesystemStorage:
         if self._path is None:
             raise RuntimeError("Workspace not set. Call set_workspace first.")
 
-    def set_workspace(self, author: str, title: str) -> None:
+    def set_workspace(
+        self, author: str, title: str, user_id: str | None = None
+    ) -> None:
         """Set the workspace directories.
 
         Args:
             author: The name of the author.
             title: The title of the book.
+            user_id: Optional user ID.
         """
-        self._path = workspace.ensure_workspace(author, title)
+        self._path = workspace.ensure_workspace(author, title, user_id=user_id)
         self.extractions_dir = self._path / "extractions"
         self.profiles_dir = self._path / "profiles"
         self.summaries_dir = self._path / "summaries"

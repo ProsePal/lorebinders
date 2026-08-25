@@ -47,6 +47,7 @@ class RunConfiguration(BaseModel):
     appearance_tracking: Literal["nested", "flat"] = "nested"
     custom_traits: dict[str, list[str]] = Field(default_factory=dict)
     custom_categories: list[str] = Field(default_factory=list)
+    user_id: str | None = None
 
 
 class Chapter(BaseModel):
