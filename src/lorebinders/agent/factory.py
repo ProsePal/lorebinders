@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
@@ -72,7 +72,10 @@ def create_agent(
         output_type: Structured output spec (plain type, PromptedOutput,
             NativeOutput, etc.).
         model_settings: Optional model settings.
-        fallback: Optional fallback model.
+        fallback: Optional fallback model. String fallback slugs will be
+            automatically provider-prefixed in the same manner as the
+            primary model.
+        fallback_settings: Optional model settings for the fallback model.
 
     Returns:
         A configured PydanticAI Agent instance.
@@ -87,7 +90,7 @@ def create_agent(
         merged: ModelSettings = (
             {**existing_settings, **model_settings}
             if existing_settings
-            else model_settings
+            else cast(ModelSettings, dict(model_settings))
         )
         model._settings = merged
 
@@ -100,7 +103,7 @@ def create_agent(
             merged_fallback: ModelSettings = (
                 {**existing_settings, **fallback_settings}
                 if existing_settings
-                else fallback_settings
+                else cast(ModelSettings, dict(fallback_settings))
             )
             fallback._settings = merged_fallback
 
