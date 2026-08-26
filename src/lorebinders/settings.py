@@ -3,6 +3,7 @@
 from functools import cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_ai.settings import ModelSettings
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -42,8 +43,8 @@ class Settings(BaseSettings):
 
     alias_resolution_enabled: bool = True
 
-    failure_threshold: float = 0.2
-    failure_threshold_min_count: int = 2
+    failure_threshold: float = Field(0.2, ge=0.0, le=1.0)
+    failure_threshold_min_count: int = Field(2, ge=1)
     spend_ceiling: float | None = None
 
     workspace_base_path: Path = Path(__file__).parent / "work"

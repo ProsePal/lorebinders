@@ -108,9 +108,13 @@ def _process_entity(
 
     if entity.summary:
         story.append(Paragraph(entity.summary, styles["Normal"]))
-    else:
+    elif entity.appearances:
         story.append(
             Paragraph("<i>Error during summarization.</i>", styles["Normal"])
+        )
+    else:
+        story.append(
+            Paragraph("<i>No appearances recorded.</i>", styles["Normal"])
         )
     story.append(Spacer(1, 12))
 
