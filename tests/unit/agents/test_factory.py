@@ -107,3 +107,39 @@ async def test_run_agent_async_emits_metric_event() -> None:
     assert meta["total_tokens"] >= 0
     assert meta["total_tokens"] == meta["input_tokens"] + meta["output_tokens"]
     assert "model" in meta
+
+
+def test_create_agent_fallback_settings_independence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify primary and fallback get independent settings."""
+    from lorebinders.settings import Settings
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    settings = Settings(
+        extraction_model="openai:gpt-4",
+        extraction_fallback_model="anthropic:claude-3-haiku",
+    )
+
+    agent = create_extraction_agent(settings=settings)
+    assert isinstance(agent.model, FallbackModel)
+
+    primary_model = agent.model.models[0]
+    fallback_model = agent.model.models[1]
+
+    # Verify each got provider-appropriate settings
+    assert primary_model.settings is not None
+    assert fallback_model.settings is not None
+    assert primary_model.settings.get("openai_reasoning_effort") == "low"
+    assert fallback_model.settings.get("anthropic_thinking") == {
+        "type": "disabled"
+    }
+
+    # Verify they are different objects
+    assert primary_model.settings is not fallback_model.settings
+
+    # Verify mutating one does not affect the other
+    primary_model.settings["timeout"] = 999.0
+    assert fallback_model.settings.get("timeout") == 600.0
