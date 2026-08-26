@@ -236,6 +236,13 @@ async def summarize_binder(
         deps: The agent dependencies.
         progress: Optional progress callback.
         on_observe: Optional observation callback.
+
+    Note:
+        Failure thresholds are per-stage and independent. Up to
+        ~1-(1-threshold)^3 total content loss can occur across the full
+        pipeline.
+        Output is only guaranteed up to this threshold, not guaranteed to be
+        complete.
     """
     tasks = _collect_tasks(binder)
     if not tasks:

@@ -412,7 +412,7 @@ async def analyze_entity_results(
     model_settings: ModelSettings | None = None,
     progress: _ProgressCb = None,
     on_observe: _ObserveCb = None,
-    raise_on_error: bool = False,
+    raise_on_error: bool = True,
 ) -> list[models.AnalysisResult]:
     """Analyze entities and return raw agent results.
 
@@ -495,7 +495,13 @@ async def analyze_entities(
         on_observe: Optional observation callback.
 
     Returns:
-        A complete list of analyzed entity profiles for the book.
+        A list of analyzed entity profiles for the book.
+
+        Note: Failure thresholds are per-stage and independent. Up to
+        ~1-(1-threshold)^3 total content loss can occur across the full
+        pipeline.
+        Output is only guaranteed up to this threshold, not guaranteed to be
+        complete.
     """
     ch_map = {ch.number: ch for ch in book.chapters}
     ch_entities = _group_entities_by_chapter(entities)

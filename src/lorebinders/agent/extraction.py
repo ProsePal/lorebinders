@@ -149,6 +149,12 @@ async def extract_book(
 
     Returns:
         A dictionary mapping chapter numbers to their extraction data.
+
+        Note: Failure thresholds are per-stage and independent. Up to
+        ~1-(1-threshold)^3 total content loss can occur across the full
+        pipeline.
+        Output is only guaranteed up to this threshold, not guaranteed to be
+        complete.
     """
     total = len(book.chapters)
     logger.info(f"Extracting entities from {total} chapters")

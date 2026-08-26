@@ -290,3 +290,41 @@ async def test_summarization_threshold_passes(
             storage=mock_storage,
         )
         assert binder.categories["Characters"].entities["Ent1"].summary == "Sum"
+
+
+@pytest.mark.anyio
+async def test_extraction_threshold_min_count_divergence(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
+    book = models.Book(
+        title="Test Book",
+        author="Test Author",
+        chapters=[
+            models.Chapter(number=1, title="Ch1", content=""),
+            models.Chapter(number=2, title="Ch2", content=""),
+            models.Chapter(number=3, title="Ch3", content=""),
+        ],
+    )
+
+    with patch(
+        "lorebinders.agent.extraction._extract_chapter", new_callable=AsyncMock
+    ) as mock_extract:
+        mock_extract.side_effect = [
+            (1, {}),
+            RuntimeError("Fail 1"),
+            (3, {}),
+        ]
+
+        results = await extract_book(
+            book=book,
+            agent=AsyncMock(),
+            deps=base_deps,
+            categories=["Characters"],
+            config=run_config,
+            storage=mock_storage,
+        )
+        assert len(results) == 2
+        assert 1 in results
+        assert 3 in results
