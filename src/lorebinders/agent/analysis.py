@@ -420,6 +420,18 @@ async def analyze_entity_results(
     ``analyze_entities``. It returns ``AnalysisResult`` records before the
     production storage layer collapses trait evidence into ``EntityProfile``
     values, which lets evaluation code score evidence quality.
+
+    Args:
+        entities: The extracted entities to analyze.
+        book: The book being processed.
+        agent: The analysis agent.
+        deps: Dependencies for the agent.
+        effective_traits: The traits to analyze.
+        model_settings: Optional model settings override.
+        progress: Optional progress callback.
+        on_observe: Optional observation callback.
+        raise_on_error: If True, bubble up exceptions; otherwise log
+            and continue.
     """
     ch_map = {ch.number: ch for ch in book.chapters}
     ch_entities = _group_entities_by_chapter(entities)
@@ -497,11 +509,14 @@ async def analyze_entities(
     Returns:
         A list of analyzed entity profiles for the book.
 
-        Note: Failure thresholds are per-stage and independent. Up to
-        ~1-(1-threshold)^3 total content loss can occur across the full
-        pipeline.
-        Output is only guaranteed up to this threshold, not guaranteed to be
-        complete.
+        Note: Failure thresholds are per-stage and independent. The actual
+        tolerated per-stage loss is max(threshold, (min_count-1)/N). For
+        large N, up to ~1-(1-threshold)^3 total content loss can occur
+        across the full pipeline. However, for a small number of tasks (N),
+        the min-count floor dominates: e.g. at 3 tasks up to 33% loss is
+        tolerated, at 2 tasks up to 50%, and at 1 task a 100% loss is
+        tolerated silently. Output is only guaranteed up to this bound,
+        not guaranteed to be complete.
     """
     ch_map = {ch.number: ch for ch in book.chapters}
     ch_entities = _group_entities_by_chapter(entities)

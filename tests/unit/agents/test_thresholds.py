@@ -293,11 +293,20 @@ async def test_summarization_threshold_passes(
 
 
 @pytest.mark.anyio
-async def test_extraction_threshold_min_count_divergence(
+@pytest.mark.parametrize(("min_count", "aborts"), [(1, True), (2, False)])
+async def test_extraction_min_count_floor_governs_small_books(
+    min_count: int,
+    aborts: bool,
     base_deps: models.AgentDeps,
     run_config: models.RunConfiguration,
     mock_storage: Any,
 ) -> None:
+    """One failure in three chapters is 33%, over the 20% ratio.
+
+    Only the min-count floor prevents the abort, so lowering the floor
+    to 1 must make the same scenario raise.
+    """
+    base_deps.settings.failure_threshold_min_count = min_count
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -317,14 +326,25 @@ async def test_extraction_threshold_min_count_divergence(
             (3, {}),
         ]
 
-        results = await extract_book(
-            book=book,
-            agent=AsyncMock(),
-            deps=base_deps,
-            categories=["Characters"],
-            config=run_config,
-            storage=mock_storage,
-        )
-        assert len(results) == 2
-        assert 1 in results
-        assert 3 in results
+        if aborts:
+            with pytest.raises(RuntimeError, match="exceeding 20% threshold"):
+                await extract_book(
+                    book=book,
+                    agent=AsyncMock(),
+                    deps=base_deps,
+                    categories=["Characters"],
+                    config=run_config,
+                    storage=mock_storage,
+                )
+        else:
+            results = await extract_book(
+                book=book,
+                agent=AsyncMock(),
+                deps=base_deps,
+                categories=["Characters"],
+                config=run_config,
+                storage=mock_storage,
+            )
+            assert len(results) == 2
+            assert 1 in results
+            assert 3 in results
