@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
@@ -62,6 +62,7 @@ def create_agent(
     output_type: OutputSpec[OutputDataT],
     model_settings: ModelSettings | None = None,
     fallback: Model | str | None = None,
+    fallback_settings: ModelSettings | None = None,
 ) -> Agent[AgentDepsT, OutputDataT]:
     """Create a PydanticAI Agent with the given model.
 
@@ -71,7 +72,10 @@ def create_agent(
         output_type: Structured output spec (plain type, PromptedOutput,
             NativeOutput, etc.).
         model_settings: Optional model settings.
-        fallback: Optional fallback model.
+        fallback: Optional fallback model. String fallback slugs will be
+            automatically provider-prefixed in the same manner as the
+            primary model.
+        fallback_settings: Optional model settings for the fallback model.
 
     Returns:
         A configured PydanticAI Agent instance.
@@ -86,11 +90,23 @@ def create_agent(
         merged: ModelSettings = (
             {**existing_settings, **model_settings}
             if existing_settings
-            else model_settings
+            else cast(ModelSettings, dict(model_settings))
         )
         model._settings = merged
 
     if fallback:
+        if isinstance(fallback, str):
+            fallback = infer_model(_ensure_prefix(fallback), provider_factory)
+
+        if isinstance(fallback, Model) and fallback_settings is not None:
+            existing_settings = fallback.settings
+            merged_fallback: ModelSettings = (
+                {**existing_settings, **fallback_settings}
+                if existing_settings
+                else cast(ModelSettings, dict(fallback_settings))
+            )
+            fallback._settings = merged_fallback
+
         model = FallbackModel(model, fallback, fallback_on=_is_moderation_error)
 
     return Agent(
@@ -251,12 +267,18 @@ def create_extraction_agent(
         output_type if output_type is not None else ExtractionResult
     )
 
+    fallback_model = _settings.extraction_fallback_model
+    fallback_settings = (
+        _settings.model_settings_for(fallback_model) if fallback_model else None
+    )
+
     agent: Agent[AgentDeps, ExtractionResult] = create_agent(
         init_extraction_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
         model_settings=_settings.model_settings_for(_settings.extraction_model),
-        fallback=_settings.extraction_fallback_model,
+        fallback=fallback_model,
+        fallback_settings=fallback_settings,
     )
 
     @agent.system_prompt
@@ -336,12 +358,18 @@ def create_analysis_agent(
         output_type if output_type is not None else list[AnalysisResult]
     )
 
+    fallback_model = _settings.analysis_fallback_model
+    fallback_settings = (
+        _settings.model_settings_for(fallback_model) if fallback_model else None
+    )
+
     agent: Agent[AgentDeps, list[AnalysisResult]] = create_agent(
         init_analysis_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
         model_settings=_settings.model_settings_for(_settings.analysis_model),
-        fallback=_settings.analysis_fallback_model,
+        fallback=fallback_model,
+        fallback_settings=fallback_settings,
     )
 
     @agent.system_prompt
@@ -416,6 +444,11 @@ def create_alias_resolution_agent(
         output_type if output_type is not None else AliasResolution
     )
 
+    fallback_model = _settings.alias_resolution_fallback_model
+    fallback_settings = (
+        _settings.model_settings_for(fallback_model) if fallback_model else None
+    )
+
     agent: Agent[AgentDeps, AliasResolution] = create_agent(
         init_alias_resolution_model(_settings),
         deps_type=AgentDeps,
@@ -423,7 +456,8 @@ def create_alias_resolution_agent(
         model_settings=_settings.model_settings_for(
             _settings.alias_resolution_model
         ),
-        fallback=_settings.alias_resolution_fallback_model,
+        fallback=fallback_model,
+        fallback_settings=fallback_settings,
     )
 
     @agent.system_prompt
@@ -492,6 +526,11 @@ def create_summarization_agent(
         output_type if output_type is not None else SummarizerResult
     )
 
+    fallback_model = _settings.summarization_fallback_model
+    fallback_settings = (
+        _settings.model_settings_for(fallback_model) if fallback_model else None
+    )
+
     agent: Agent[AgentDeps, SummarizerResult] = create_agent(
         init_summarization_model(_settings),
         deps_type=AgentDeps,
@@ -499,7 +538,8 @@ def create_summarization_agent(
         model_settings=_settings.model_settings_for(
             _settings.summarization_model
         ),
-        fallback=_settings.summarization_fallback_model,
+        fallback=fallback_model,
+        fallback_settings=fallback_settings,
     )
 
     @agent.system_prompt
