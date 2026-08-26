@@ -149,6 +149,15 @@ async def extract_book(
 
     Returns:
         A dictionary mapping chapter numbers to their extraction data.
+
+        Note: Failure thresholds are per-stage and independent. The actual
+        tolerated per-stage loss is max(threshold, (min_count-1)/N). For
+        large N, up to ~1-(1-threshold)^3 total content loss can occur
+        across the full pipeline. However, for a small number of tasks (N),
+        the min-count floor dominates: e.g. at 3 tasks up to 33% loss is
+        tolerated, at 2 tasks up to 50%, and at 1 task a 100% loss is
+        tolerated silently. Output is only guaranteed up to this bound,
+        not guaranteed to be complete.
     """
     total = len(book.chapters)
     logger.info(f"Extracting entities from {total} chapters")
