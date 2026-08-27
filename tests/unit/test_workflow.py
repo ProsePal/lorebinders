@@ -360,3 +360,105 @@ async def test_build_binder_accumulates_stage_failures(
     # 1 summarize_binder call * 3 failed summarizations = 3
     assert binder.stage_failures["summarization"]["failed_count"] == 3
     assert binder.stage_failures["summarization"]["total_count"] == 15
+
+
+@pytest.mark.anyio
+async def test_build_binder_clean_run_no_partial_results(
+    temp_workspace: Path,
+    book_file: Path,
+) -> None:
+    """Test a clean run generates a PDF without the partial results note."""
+    config = models.RunConfiguration(
+        series_title="Test Series",
+        books=[
+            models.BookInput(path=book_file, title="Book 1"),
+        ],
+        author_name="Test Author",
+        narrator_config=models.NarratorConfig(),
+    )
+    fake_storage = MagicMock()
+    fake_storage.path = temp_workspace / "Test_Author" / "Test_Series"
+    fake_storage.path.mkdir(parents=True, exist_ok=True)
+
+    from typing import Any
+
+    from pypdf import PdfReader
+
+    def mock_ingest_func(
+        content: str, title: str, *args: Any, **kwargs: Any
+    ) -> models.Book:
+        book = _make_fake_book()
+        book.title = title
+        return book
+
+    async def mock_extract(*args: Any, **kwargs: Any) -> dict[Any, Any]:
+        on_obs = kwargs.get("on_observe") or args[7]
+        on_obs(
+            models.ObservationEvent(
+                type=models.ObservationType.METRIC,
+                stage="extraction",
+                message="0 failed",
+                metadata={
+                    "failed_count": 0,
+                    "total_count": 5,
+                    "stage": "extraction",
+                },
+            )
+        )
+        return {}
+
+    async def mock_analyze(*args: Any, **kwargs: Any) -> list[Any]:
+        on_obs = kwargs.get("on_observe") or args[7]
+        on_obs(
+            models.ObservationEvent(
+                type=models.ObservationType.METRIC,
+                stage="analysis",
+                message="0 failed",
+                metadata={
+                    "failed_count": 0,
+                    "total_count": 10,
+                    "stage": "analysis",
+                },
+            )
+        )
+        return []
+
+    async def mock_summarize(*args: Any, **kwargs: Any) -> None:
+        on_obs = kwargs.get("on_observe") or args[5]
+        on_obs(
+            models.ObservationEvent(
+                type=models.ObservationType.METRIC,
+                stage="summarization",
+                message="0 failed",
+                metadata={
+                    "failed_count": 0,
+                    "total_count": 15,
+                    "stage": "summarization",
+                },
+            )
+        )
+        return None
+
+    with (
+        patch("lorebinders.workflow.convert_to_text", return_value=""),
+        patch("lorebinders.workflow.ingest", side_effect=mock_ingest_func),
+        patch("lorebinders.workflow.extract_book", side_effect=mock_extract),
+        patch(
+            "lorebinders.workflow.analyze_entities", side_effect=mock_analyze
+        ),
+        patch(
+            "lorebinders.workflow.summarize_binder", side_effect=mock_summarize
+        ),
+        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
+    ):
+        result_pdf_path = await build_binder(config)
+
+    assert result_pdf_path.exists()
+
+    # Verify the generated PDF has NO partial-results note
+    reader = PdfReader(result_pdf_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text()
+
+    assert "Note: Partial Results" not in text

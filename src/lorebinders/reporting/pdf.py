@@ -154,11 +154,18 @@ def generate_pdf_report(data: Binder, output_path: Path) -> None:
 
     story.append(Spacer(1, 12))
 
-    if getattr(data, "stage_failures", None):
+    stage_failures = getattr(data, "stage_failures", {}) or {}
+    actual_failures = {
+        stage: stats
+        for stage, stats in stage_failures.items()
+        if stats.get("failed_count", 0) > 0
+    }
+
+    if actual_failures:
         story.append(
             Paragraph("<b>Note: Partial Results</b>", styles["Heading2"])
         )
-        for stage, stats in data.stage_failures.items():
+        for stage, stats in actual_failures.items():
             unit_map = {
                 "extraction": "chapters",
                 "analysis": "chapter blocks",
