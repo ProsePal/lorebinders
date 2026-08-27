@@ -326,15 +326,14 @@ def emit_failure_metric(
     total_count: int,
 ) -> None:
     """Helper to emit failure metrics for a stage."""
-    if failed_count > 0:
-        emit_observation(
-            on_observe,
-            ObservationType.METRIC,
-            stage,
-            f"{failed_count} tasks failed during {stage}",
-            {
-                "failed_count": failed_count,
-                "total_count": total_count,
-                "stage": stage,
-            },
-        )
+    emit_observation(
+        on_observe,
+        ObservationType.METRIC,
+        stage,
+        f"{failed_count} tasks failed during {stage}",
+        {
+            "failed_count": failed_count,
+            "total_count": total_count,
+            "stage": stage,
+        },
+    )

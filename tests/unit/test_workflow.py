@@ -265,20 +265,29 @@ async def test_build_binder_accumulates_stage_failures(
         author_name="Test Author",
         narrator_config=models.NarratorConfig(),
     )
-    fake_book = _make_fake_book()
     fake_storage = MagicMock()
     fake_storage.path = temp_workspace / "Test_Author" / "Test_Series"
 
     from typing import Any
+
+    def mock_ingest_func(
+        content: str, title: str, *args: Any, **kwargs: Any
+    ) -> models.Book:
+        book = _make_fake_book()
+        book.title = title
+        return book
+
     async def mock_extract(*args: Any, **kwargs: Any) -> dict[Any, Any]:
+        book = args[0]
         on_obs = kwargs.get("on_observe") or args[7]
+        failed = 1 if book.title == "Book 1" else 0
         on_obs(
             models.ObservationEvent(
                 type=models.ObservationType.METRIC,
                 stage="extraction",
-                message="failed",
+                message=f"{failed} failed",
                 metadata={
-                    "failed_count": 1,
+                    "failed_count": failed,
                     "total_count": 5,
                     "stage": "extraction",
                 },
@@ -287,14 +296,16 @@ async def test_build_binder_accumulates_stage_failures(
         return {}
 
     async def mock_analyze(*args: Any, **kwargs: Any) -> list[Any]:
+        book = args[1]
         on_obs = kwargs.get("on_observe") or args[7]
+        failed = 2 if book.title == "Book 1" else 0
         on_obs(
             models.ObservationEvent(
                 type=models.ObservationType.METRIC,
                 stage="analysis",
-                message="failed",
+                message=f"{failed} failed",
                 metadata={
-                    "failed_count": 2,
+                    "failed_count": failed,
                     "total_count": 10,
                     "stage": "analysis",
                 },
@@ -320,7 +331,7 @@ async def test_build_binder_accumulates_stage_failures(
 
     with (
         patch("lorebinders.workflow.convert_to_text", return_value=""),
-        patch("lorebinders.workflow.ingest", return_value=fake_book),
+        patch("lorebinders.workflow.ingest", side_effect=mock_ingest_func),
         patch("lorebinders.workflow.extract_book", side_effect=mock_extract),
         patch(
             "lorebinders.workflow.analyze_entities", side_effect=mock_analyze
@@ -335,15 +346,17 @@ async def test_build_binder_accumulates_stage_failures(
 
     # Verify that the PDF generator was called with accumulated counts
     binder = mock_report.call_args.args[0]
-    
-    # 2 books * 1 failed extraction each = 2 failed extractions
-    assert binder.stage_failures["extraction"]["failed_count"] == 2
+
+    # 1 book fails (1 error), 1 book clean (0 errors) -> 1 failed extraction
+    # Total count should be 5 + 5 = 10
+    assert binder.stage_failures["extraction"]["failed_count"] == 1
     assert binder.stage_failures["extraction"]["total_count"] == 10
-    
-    # 2 books * 2 failed analyses each = 4 failed analyses
-    assert binder.stage_failures["analysis"]["failed_count"] == 4
+
+    # 1 book fails (2 errors), 1 book clean (0 errors) -> 2 failed analyses
+    # Total count should be 10 + 10 = 20
+    assert binder.stage_failures["analysis"]["failed_count"] == 2
     assert binder.stage_failures["analysis"]["total_count"] == 20
-    
+
     # 1 summarize_binder call * 3 failed summarizations = 3
     assert binder.stage_failures["summarization"]["failed_count"] == 3
     assert binder.stage_failures["summarization"]["total_count"] == 15

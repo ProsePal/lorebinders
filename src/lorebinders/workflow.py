@@ -212,6 +212,10 @@ async def build_binder(
                 stage_failures[stage] = {"failed_count": 0, "total_count": 0}
             stage_failures[stage]["failed_count"] += fc_int
             stage_failures[stage]["total_count"] += tc_int
+
+            if fc_int == 0:
+                return
+
         if on_observe:
             on_observe(event)
 
