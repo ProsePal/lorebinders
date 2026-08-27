@@ -203,23 +203,9 @@ async def extract_book(
 
     if len(tasks) > 0:
         ratio = failed_count / len(tasks)
-        if failed_count > 0:
-            if on_observe:
-                from lorebinders.models import ObservationEvent, ObservationType
-
-                on_observe(
-                    ObservationEvent(
-                        type=ObservationType.METRIC,
-                        stage="extraction",
-                        message=f"{failed_count} tasks failed "
-                        "during extraction",
-                        metadata={
-                            "failed_count": failed_count,
-                            "total_count": len(tasks),
-                            "stage": "extraction",
-                        },
-                    )
-                )
+        models.emit_failure_metric(
+            on_observe, "extraction", failed_count, len(tasks)
+        )
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count

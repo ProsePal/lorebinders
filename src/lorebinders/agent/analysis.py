@@ -569,22 +569,9 @@ async def analyze_entities(
 
     if len(chapter_tasks) > 0:
         ratio = failed_count / len(chapter_tasks)
-        if failed_count > 0:
-            if on_observe:
-                from lorebinders.models import ObservationEvent, ObservationType
-
-                on_observe(
-                    ObservationEvent(
-                        type=ObservationType.METRIC,
-                        stage="analysis",
-                        message=f"{failed_count} tasks failed during analysis",
-                        metadata={
-                            "failed_count": failed_count,
-                            "total_count": len(chapter_tasks),
-                            "stage": "analysis",
-                        },
-                    )
-                )
+        models.emit_failure_metric(
+            on_observe, "analysis", failed_count, len(chapter_tasks)
+        )
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count

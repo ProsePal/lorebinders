@@ -196,7 +196,7 @@ async def build_binder(
     )
 
     all_profiles: list[models.EntityProfile] = []
-    stage_failures: dict[str, dict[str, int]] = {}
+    stage_failures: dict[str, models.StageStats] = {}
 
     def wrapped_observe(event: models.ObservationEvent) -> None:
         if (
@@ -206,10 +206,12 @@ async def build_binder(
             stage = str(event.metadata.get("stage", "unknown"))
             fc = event.metadata["failed_count"]
             tc = event.metadata.get("total_count", 0)
-            stage_failures[stage] = {
-                "failed_count": int(fc) if fc is not None else 0,
-                "total_count": int(tc) if tc is not None else 0,
-            }
+            fc_int = int(fc) if fc is not None else 0
+            tc_int = int(tc) if tc is not None else 0
+            if stage not in stage_failures:
+                stage_failures[stage] = {"failed_count": 0, "total_count": 0}
+            stage_failures[stage]["failed_count"] += fc_int
+            stage_failures[stage]["total_count"] += tc_int
         if on_observe:
             on_observe(event)
 
@@ -250,9 +252,7 @@ async def build_binder(
             models.ObservationType.STAGE_STARTED,
             "analysis",
             f"Starting analysis for {book_input.title}",
-            {"total_batches": sum(len(e) for e in sorted_ext.values())}
-            if on_observe
-            else None,
+            {"total_batches": sum(len(e) for e in sorted_ext.values())},
         )
         profiles = await analyze_entities(
             sorted_ext,
@@ -283,8 +283,6 @@ async def build_binder(
         wrapped_observe,
     )
 
-    binder.stage_failures = stage_failures
-
     total_ent = sum(len(c.entities) for c in binder.categories.values())
     models.emit_observation(
         wrapped_observe,
@@ -296,6 +294,8 @@ async def build_binder(
     await summarize_binder(
         binder, storage, sum_agent, deps, progress, wrapped_observe
     )
+
+    binder.stage_failures = stage_failures
 
     safe_title = sanitize_filename(config.series_title)
     output_dir = storage.path
@@ -309,14 +309,12 @@ async def build_binder(
     )
     await asyncio.to_thread(generate_pdf_report, binder, output_file)
 
-    if on_observe:
-        wrapped_observe(
-            models.ObservationEvent(
-                type=models.ObservationType.STAGE_COMPLETED,
-                stage="workflow",
-                message="Build complete!",
-                metadata={"output_file": str(output_file)},
-            )
-        )
+    models.emit_observation(
+        wrapped_observe,
+        models.ObservationType.STAGE_COMPLETED,
+        "workflow",
+        "Build complete!",
+        {"output_file": str(output_file)},
+    )
 
     return output_file

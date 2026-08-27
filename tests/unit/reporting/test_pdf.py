@@ -60,3 +60,26 @@ def test_generate_pdf_report_aggregated(tmp_path: Path) -> None:
 
     assert "Book 1, Chapter 1: Brave" in text
     assert "Book 1, Chapter 2: Brave" in text
+
+
+def test_generate_pdf_report_with_stage_failures(tmp_path: Path) -> None:
+    output_path = tmp_path / "test_report_failures.pdf"
+
+    binder = Binder()
+    binder.stage_failures = {
+        "extraction": {"failed_count": 2, "total_count": 10},
+        "analysis": {"failed_count": 5, "total_count": 50},
+    }
+
+    generate_pdf_report(binder, output_path)
+
+    assert output_path.exists()
+
+    reader = PdfReader(output_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text()
+
+    assert "Note: Partial Results" in text
+    assert "Extraction stage: 2/10 chapters failed." in text
+    assert "Analysis stage: 5/50 chapter blocks failed." in text

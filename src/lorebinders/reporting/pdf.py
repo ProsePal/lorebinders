@@ -156,12 +156,18 @@ def generate_pdf_report(data: Binder, output_path: Path) -> None:
 
     if getattr(data, "stage_failures", None):
         story.append(
-            Paragraph("<b>Note: Partial Results</b>", styles["Heading3"])
+            Paragraph("<b>Note: Partial Results</b>", styles["Heading2"])
         )
         for stage, stats in data.stage_failures.items():
+            unit_map = {
+                "extraction": "chapters",
+                "analysis": "chapter blocks",
+                "summarization": "entities",
+            }
+            unit = unit_map.get(stage, "tasks")
             msg = (
                 f"{stage.capitalize()} stage: "
-                f"{stats['failed_count']}/{stats['total_count']} tasks failed."
+                f"{stats['failed_count']}/{stats['total_count']} {unit} failed."
             )
             story.append(Paragraph(f"<i>{msg}</i>", styles["Normal"]))
         story.append(Spacer(1, 12))

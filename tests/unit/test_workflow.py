@@ -248,3 +248,102 @@ async def test_build_binder_forwards_user_id(
     fake_storage.set_workspace.assert_called_once_with(
         "Test Author", "Test Series", user_id="user_123"
     )
+
+
+@pytest.mark.anyio
+async def test_build_binder_accumulates_stage_failures(
+    temp_workspace: Path,
+    book_file: Path,
+) -> None:
+    """Test that stage failures correctly accumulate across multiple books."""
+    config = models.RunConfiguration(
+        series_title="Test Series",
+        books=[
+            models.BookInput(path=book_file, title="Book 1"),
+            models.BookInput(path=book_file, title="Book 2"),
+        ],
+        author_name="Test Author",
+        narrator_config=models.NarratorConfig(),
+    )
+    fake_book = _make_fake_book()
+    fake_storage = MagicMock()
+    fake_storage.path = temp_workspace / "Test_Author" / "Test_Series"
+
+    from typing import Any
+    async def mock_extract(*args: Any, **kwargs: Any) -> dict[Any, Any]:
+        on_obs = kwargs.get("on_observe") or args[7]
+        on_obs(
+            models.ObservationEvent(
+                type=models.ObservationType.METRIC,
+                stage="extraction",
+                message="failed",
+                metadata={
+                    "failed_count": 1,
+                    "total_count": 5,
+                    "stage": "extraction",
+                },
+            )
+        )
+        return {}
+
+    async def mock_analyze(*args: Any, **kwargs: Any) -> list[Any]:
+        on_obs = kwargs.get("on_observe") or args[7]
+        on_obs(
+            models.ObservationEvent(
+                type=models.ObservationType.METRIC,
+                stage="analysis",
+                message="failed",
+                metadata={
+                    "failed_count": 2,
+                    "total_count": 10,
+                    "stage": "analysis",
+                },
+            )
+        )
+        return []
+
+    async def mock_summarize(*args: Any, **kwargs: Any) -> None:
+        on_obs = kwargs.get("on_observe") or args[5]
+        on_obs(
+            models.ObservationEvent(
+                type=models.ObservationType.METRIC,
+                stage="summarization",
+                message="failed",
+                metadata={
+                    "failed_count": 3,
+                    "total_count": 15,
+                    "stage": "summarization",
+                },
+            )
+        )
+        return None
+
+    with (
+        patch("lorebinders.workflow.convert_to_text", return_value=""),
+        patch("lorebinders.workflow.ingest", return_value=fake_book),
+        patch("lorebinders.workflow.extract_book", side_effect=mock_extract),
+        patch(
+            "lorebinders.workflow.analyze_entities", side_effect=mock_analyze
+        ),
+        patch(
+            "lorebinders.workflow.summarize_binder", side_effect=mock_summarize
+        ),
+        patch("lorebinders.workflow.generate_pdf_report") as mock_report,
+        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
+    ):
+        await build_binder(config)
+
+    # Verify that the PDF generator was called with accumulated counts
+    binder = mock_report.call_args.args[0]
+    
+    # 2 books * 1 failed extraction each = 2 failed extractions
+    assert binder.stage_failures["extraction"]["failed_count"] == 2
+    assert binder.stage_failures["extraction"]["total_count"] == 10
+    
+    # 2 books * 2 failed analyses each = 4 failed analyses
+    assert binder.stage_failures["analysis"]["failed_count"] == 4
+    assert binder.stage_failures["analysis"]["total_count"] == 20
+    
+    # 1 summarize_binder call * 3 failed summarizations = 3
+    assert binder.stage_failures["summarization"]["failed_count"] == 3
+    assert binder.stage_failures["summarization"]["total_count"] == 15
