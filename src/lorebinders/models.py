@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,13 @@ from lorebinders.types import EntityTraits as EntityTraits
 if TYPE_CHECKING:
     from lorebinders.agent.spend import Spend
     from lorebinders.settings import Settings
+
+
+class StageStats(TypedDict):
+    """Statistics for failures within a pipeline stage."""
+
+    failed_count: int
+    total_count: int
 
 
 @dataclass
@@ -129,6 +136,7 @@ class Binder(BaseModel):
     """The complete Story Bible state."""
 
     categories: dict[str, CategoryRecord] = Field(default_factory=dict)
+    stage_failures: dict[str, StageStats] = Field(default_factory=dict)
 
     def get_entity(self, category: str, name: str) -> EntityRecord | None:
         """Helper to safely retrieve an entity record.
@@ -308,4 +316,24 @@ def emit_observation(
             message=message,
             metadata=metadata or {},
         )
+    )
+
+
+def emit_failure_metric(
+    on_observe: Callable[[ObservationEvent], None] | None,
+    stage: str,
+    failed_count: int,
+    total_count: int,
+) -> None:
+    """Helper to emit failure metrics for a stage."""
+    emit_observation(
+        on_observe,
+        ObservationType.METRIC,
+        stage,
+        f"{failed_count} tasks failed during {stage}",
+        {
+            "failed_count": failed_count,
+            "total_count": total_count,
+            "stage": stage,
+        },
     )

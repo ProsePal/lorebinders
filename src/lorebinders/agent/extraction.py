@@ -203,6 +203,9 @@ async def extract_book(
 
     if len(tasks) > 0:
         ratio = failed_count / len(tasks)
+        models.emit_failure_metric(
+            on_observe, "extraction", failed_count, len(tasks)
+        )
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count
