@@ -129,6 +129,7 @@ class Binder(BaseModel):
     """The complete Story Bible state."""
 
     categories: dict[str, CategoryRecord] = Field(default_factory=dict)
+    stage_failures: dict[str, dict[str, int]] = Field(default_factory=dict)
 
     def get_entity(self, category: str, name: str) -> EntityRecord | None:
         """Helper to safely retrieve an entity record.

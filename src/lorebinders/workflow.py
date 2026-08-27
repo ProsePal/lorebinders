@@ -196,10 +196,26 @@ async def build_binder(
     )
 
     all_profiles: list[models.EntityProfile] = []
+    stage_failures: dict[str, dict[str, int]] = {}
+
+    def wrapped_observe(event: models.ObservationEvent) -> None:
+        if (
+            event.type == models.ObservationType.METRIC
+            and "failed_count" in event.metadata
+        ):
+            stage = str(event.metadata.get("stage", "unknown"))
+            fc = event.metadata["failed_count"]
+            tc = event.metadata.get("total_count", 0)
+            stage_failures[stage] = {
+                "failed_count": int(fc) if fc is not None else 0,
+                "total_count": int(tc) if tc is not None else 0,
+            }
+        if on_observe:
+            on_observe(event)
 
     for book_input in config.books:
         models.emit_observation(
-            on_observe,
+            wrapped_observe,
             models.ObservationType.STAGE_STARTED,
             "ingestion",
             f"Ingesting {book_input.path.name}",
@@ -209,7 +225,7 @@ async def build_binder(
         book = ingest(text, book_input.title)
 
         models.emit_observation(
-            on_observe,
+            wrapped_observe,
             models.ObservationType.STAGE_STARTED,
             "extraction",
             f"Starting extraction for {book_input.title}",
@@ -223,14 +239,14 @@ async def build_binder(
             config,
             storage,
             progress,
-            on_observe,
+            wrapped_observe,
         )
 
         narrator = config.narrator_config.name
         sorted_ext = sort_extractions(raw, narrator)
 
         models.emit_observation(
-            on_observe,
+            wrapped_observe,
             models.ObservationType.STAGE_STARTED,
             "analysis",
             f"Starting analysis for {book_input.title}",
@@ -246,12 +262,12 @@ async def build_binder(
             traits,
             storage,
             progress,
-            on_observe,
+            wrapped_observe,
         )
         all_profiles.extend(profiles)
 
     models.emit_observation(
-        on_observe,
+        wrapped_observe,
         models.ObservationType.STAGE_STARTED,
         "refinement",
         "Refining binder data",
@@ -264,19 +280,21 @@ async def build_binder(
         config.narrator_config.name,
         ali_agent,
         deps,
-        on_observe,
+        wrapped_observe,
     )
+
+    binder.stage_failures = stage_failures
 
     total_ent = sum(len(c.entities) for c in binder.categories.values())
     models.emit_observation(
-        on_observe,
+        wrapped_observe,
         models.ObservationType.STAGE_STARTED,
         "summarization",
         "Starting summarization",
         {"total_entities": total_ent},
     )
     await summarize_binder(
-        binder, storage, sum_agent, deps, progress, on_observe
+        binder, storage, sum_agent, deps, progress, wrapped_observe
     )
 
     safe_title = sanitize_filename(config.series_title)
@@ -284,7 +302,7 @@ async def build_binder(
     output_file = output_dir / f"{safe_title}_story_bible.pdf"
 
     models.emit_observation(
-        on_observe,
+        wrapped_observe,
         models.ObservationType.STAGE_STARTED,
         "reporting",
         f"Generating PDF to {output_file.name}",
@@ -292,7 +310,7 @@ async def build_binder(
     await asyncio.to_thread(generate_pdf_report, binder, output_file)
 
     if on_observe:
-        on_observe(
+        wrapped_observe(
             models.ObservationEvent(
                 type=models.ObservationType.STAGE_COMPLETED,
                 stage="workflow",

@@ -154,6 +154,18 @@ def generate_pdf_report(data: Binder, output_path: Path) -> None:
 
     story.append(Spacer(1, 12))
 
+    if getattr(data, "stage_failures", None):
+        story.append(
+            Paragraph("<b>Note: Partial Results</b>", styles["Heading3"])
+        )
+        for stage, stats in data.stage_failures.items():
+            msg = (
+                f"{stage.capitalize()} stage: "
+                f"{stats['failed_count']}/{stats['total_count']} tasks failed."
+            )
+            story.append(Paragraph(f"<i>{msg}</i>", styles["Normal"]))
+        story.append(Spacer(1, 12))
+
     for cat_name in sorted(data.categories.keys()):
         _process_category(story, cat_name, data, styles)
 
