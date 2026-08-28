@@ -5,6 +5,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+pytest.importorskip("sqlalchemy")
+
 from sqlalchemy import select
 
 from lorebinders import models

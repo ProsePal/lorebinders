@@ -16,7 +16,7 @@ from rich.progress import (
 from lorebinders import app, models
 from lorebinders.cli.configuration import build_run_configuration
 from lorebinders.logging import configure_logging
-from lorebinders.storage import DBStorage, FilesystemStorage, StorageProvider
+from lorebinders.storage import FilesystemStorage, StorageProvider
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -127,9 +127,13 @@ def main(
     )
     _setup_logging(log_file, verbose)
 
-    provider_class: type[StorageProvider] = (
-        DBStorage if storage == "db" else FilesystemStorage
-    )
+    provider_class: type[StorageProvider]
+    if storage == "db":
+        from lorebinders.storage import DBStorage
+
+        provider_class = DBStorage
+    else:
+        provider_class = FilesystemStorage
 
     console.print("[bold blue]Starting LoreBinders...[/bold blue]")
     try:
