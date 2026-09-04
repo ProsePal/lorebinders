@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Every uv invocation passes --locked so a stale lockfile fails the job instead
+# of silently resolving to different dependency versions.
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --all-extras --locked
+      - run: uv run --locked ruff check src/ tests/
+      - run: uv run --locked ruff format --check src/ tests/
+      - run: uv run --locked mypy src/
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # requires-python is >=3.11 and apps/lorebinders-api consumes this
+        # package on 3.13, where annotations evaluate eagerly (pre-PEP 649).
+        # The full range guards against annotation-regime skew between the
+        # package's own interpreter and its downstream consumers.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --all-extras --locked --python ${{ matrix.python-version }}
+      - run: uv run --locked --python ${{ matrix.python-version }} pytest -m "not external"
