@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Every uv invocation passes --locked so a stale lockfile fails the job instead
@@ -24,9 +24,9 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --all-extras --locked
-      - run: uv run --locked ruff check src/ tests/
-      - run: uv run --locked ruff format --check src/ tests/
-      - run: uv run --locked mypy src/
+      - run: uv run --locked ruff check .
+      - run: uv run --locked ruff format --check .
+      - run: uv run --locked mypy src/ tests/
 
   test:
     runs-on: ubuntu-latest
