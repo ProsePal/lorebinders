@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 from lorebinders.types import EntityTraits as EntityTraits
 
