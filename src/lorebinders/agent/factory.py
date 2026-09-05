@@ -135,10 +135,10 @@ async def run_agent_async(
     Returns:
         The output data from the agent run.
     """
-    if hasattr(agent.model, "model_name"):
-        model = getattr(agent.model, "model_name", str(agent.model))
-    elif isinstance(agent.model, FallbackModel):
+    if isinstance(agent.model, FallbackModel):
         model = getattr(agent.model.models[0], "model_name", str(agent.model))
+    elif hasattr(agent.model, "model_name"):
+        model = getattr(agent.model, "model_name", str(agent.model))
     else:
         model = str(agent.model) or "unknown"
 
@@ -171,8 +171,8 @@ async def run_agent_async(
                 last_msg = res.all_messages()[-1]
                 if hasattr(last_msg, "model_name") and last_msg.model_name:
                     actual_model = last_msg.model_name
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to re-derive actual model: {e}")
 
         emit_observation(
             on_observe,

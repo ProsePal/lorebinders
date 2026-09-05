@@ -1,3 +1,7 @@
+import logging
+from typing import Any
+from unittest.mock import patch
+
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models.fallback import FallbackModel
@@ -173,3 +177,93 @@ def test_create_agent_fallback_settings_same_provider(
 
     primary_model.settings["timeout"] = 999.0
     assert fallback_model.settings.get("timeout") == 600.0
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_with_fallback_model_initial_model_name() -> None:
+    """Verify that run_agent_async resolves initial model name to primary
+    model.
+    """
+    observations: list[ObservationEvent] = []
+
+    def on_observe(event: ObservationEvent) -> None:
+        observations.append(event)
+
+    primary = TestModel()
+    fallback = TestModel()
+    agent = create_agent(
+        primary,
+        deps_type=AgentDeps,
+        output_type=ExtractionResult,
+        fallback=fallback,
+    )
+
+    deps = AgentDeps(
+        settings=get_settings(),
+        prompt_loader=load_prompt_from_assets,
+    )
+
+    await run_agent_async(
+        agent, "test prompt", deps=deps, on_observe=on_observe
+    )
+
+    start_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_STARTED
+    ]
+    assert len(start_events) == 1
+    assert start_events[0].metadata.get("model") == primary.model_name
+    assert not str(start_events[0].metadata.get("model", "")).startswith(
+        "fallback:"
+    )
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_actual_model_rederivation_failure_logs_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify exceptions in actual-model re-derivation log a warning and
+    fall back to model.
+    """
+    observations: list[ObservationEvent] = []
+
+    def on_observe(event: ObservationEvent) -> None:
+        observations.append(event)
+
+    primary = TestModel()
+    fallback = TestModel()
+    agent = create_agent(
+        primary,
+        deps_type=AgentDeps,
+        output_type=ExtractionResult,
+        fallback=fallback,
+    )
+
+    deps = AgentDeps(
+        settings=get_settings(),
+        prompt_loader=load_prompt_from_assets,
+    )
+
+    original_run = agent.run
+
+    async def mock_run(*args: Any, **kwargs: Any) -> Any:
+        res = await original_run(*args, **kwargs)
+        res.all_messages = lambda: (_ for _ in ()).throw(
+            RuntimeError("message history unavailable")
+        )
+        return res
+
+    with patch.object(agent, "run", side_effect=mock_run):
+        with caplog.at_level(logging.WARNING):
+            await run_agent_async(
+                agent, "test prompt", deps=deps, on_observe=on_observe
+            )
+
+    assert "Failed to re-derive actual model" in caplog.text
+    completed_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_COMPLETED
+    ]
+    assert len(completed_events) == 1
+    assert (
+        completed_events[0].message
+        == f"Agent run completed with model {primary.model_name}"
+    )
