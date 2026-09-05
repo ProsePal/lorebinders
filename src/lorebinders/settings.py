@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     ``alias_resolution_enabled`` gates the LLM alias resolution pass that
     runs after rule-based deduplication; set it false to skip the extra
     model calls on cost-sensitive runs.
+    ``failure_threshold`` sets the maximum tolerable failure ratio for each
+    pipeline stage, and ``failure_threshold_min_count`` sets the minimum
+    number of failed tasks required before that threshold aborts execution.
     """
 
     model_config = SettingsConfigDict(
@@ -43,8 +46,25 @@ class Settings(BaseSettings):
 
     alias_resolution_enabled: bool = True
 
-    failure_threshold: float = Field(0.2, ge=0.0, le=1.0)
-    failure_threshold_min_count: int = Field(2, ge=1)
+    failure_threshold: float = Field(
+        0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Maximum tolerable failure ratio (0.0 to 1.0) for pipeline "
+            "stages. Stages abort if failed_count / total exceeds this ratio "
+            "and failed_count >= failure_threshold_min_count."
+        ),
+    )
+    failure_threshold_min_count: int = Field(
+        2,
+        ge=1,
+        description=(
+            "Minimum number of failed tasks required before failure_threshold "
+            "can abort a pipeline stage. Prevents aborting small batches on "
+            "isolated failures."
+        ),
+    )
     spend_ceiling: float | None = None
 
     workspace_base_path: Path = Path(__file__).parent / "work"

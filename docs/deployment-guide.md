@@ -23,6 +23,8 @@ LoreBinders uses environment variables for configuration. You can set these in y
 - `LOREBINDERS_EXTRACTION_MODEL`: AI model for entity extraction (Default: `openrouter:bytedance/seed-1.6-flash`).
 - `LOREBINDERS_ANALYSIS_MODEL`: AI model for trait analysis (Default: `openrouter:deepseek/deepseek-v3.2`).
 - `LOREBINDERS_SUMMARIZATION_MODEL`: AI model for synthesis (Default: `openrouter:bytedance/seed-1.6-flash`).
+- `LOREBINDERS_FAILURE_THRESHOLD`: Maximum tolerable failure ratio (0.0 to 1.0) before aborting a pipeline stage (Default: `0.2`).
+- `LOREBINDERS_FAILURE_THRESHOLD_MIN_COUNT`: Minimum number of failed tasks required before failure_threshold triggers an abort (Default: `2`).
 - `LOREBINDERS_WORKSPACE_BASE_PATH`: Base path for intermediate processing and outputs (Default: `work`).
 
 ### LLM API Access
