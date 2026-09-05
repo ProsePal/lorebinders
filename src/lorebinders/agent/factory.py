@@ -136,14 +136,21 @@ async def run_agent_async(
     Returns:
         The output data from the agent run.
     """
-    if deps.spend is not None:
-        await deps.spend.check()
-
     if isinstance(agent.model, FallbackModel):
         model = agent.model.models[0].model_name
     else:
         assert isinstance(agent.model, Model)
         model = agent.model.model_name
+
+    estimated_cost = 0.0
+    reserved = False
+    if deps.spend is not None:
+        from lorebinders.agent.spend import estimate_cost
+
+        estimated_input_tokens = max(1, len(user_prompt) // 4)
+        estimated_cost = estimate_cost(model, estimated_input_tokens, 0)
+        await deps.spend.reserve(estimated_cost)
+        reserved = True
 
     logger.debug(f"Running agent (async) with model: {model}")
     meta: dict[str, str | int | float | bool | None] = {"model": model}
@@ -163,86 +170,93 @@ async def run_agent_async(
         safe_settings.update(copy.deepcopy(model_settings))
 
     try:
-        res = await agent.run(
-            user_prompt, deps=deps, model_settings=safe_settings
-        )
-        logger.debug("Agent run completed successfully")
-
-        actual_model = model
         try:
-            if hasattr(res, "all_messages"):
-                for msg in reversed(res.all_messages()):
-                    if isinstance(msg, ModelResponse) and msg.model_name:
-                        actual_model = msg.model_name
-                        break
+            res = await agent.run(
+                user_prompt, deps=deps, model_settings=safe_settings
+            )
+            logger.debug("Agent run completed successfully")
+
+            actual_model = model
+            try:
+                if hasattr(res, "all_messages"):
+                    for msg in reversed(res.all_messages()):
+                        if isinstance(msg, ModelResponse) and msg.model_name:
+                            actual_model = msg.model_name
+                            break
+                    else:
+                        logger.warning(
+                            "Failed to re-derive actual model: "
+                            "no ModelResponse with model_name found in message "
+                            "history"
+                        )
                 else:
                     logger.warning(
                         "Failed to re-derive actual model: "
-                        "no ModelResponse with model_name found in message "
-                        "history"
+                        "result has no all_messages method"
                     )
-            else:
-                logger.warning(
-                    "Failed to re-derive actual model: "
-                    "result has no all_messages method"
-                )
-        except Exception as e:
-            logger.warning(f"Failed to re-derive actual model: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to re-derive actual model: {e}")
 
-        completed_meta: dict[str, str | int | float | bool | None] = {
-            "model": actual_model
-        }
-        emit_observation(
-            on_observe,
-            ObservationType.AGENT_RUN_COMPLETED,
-            "agent",
-            f"Agent run completed with model {actual_model}",
-            completed_meta,
-        )
-
-        cost: float | None = None
-        try:
-            usage = res.usage()
+            completed_meta: dict[str, str | int | float | bool | None] = {
+                "model": actual_model
+            }
             emit_observation(
                 on_observe,
-                ObservationType.METRIC,
+                ObservationType.AGENT_RUN_COMPLETED,
                 "agent",
-                f"Token usage for model {actual_model}",
-                {
-                    "model": actual_model,
-                    "input_tokens": usage.input_tokens,
-                    "output_tokens": usage.output_tokens,
-                    "total_tokens": (
-                        (usage.input_tokens or 0) + (usage.output_tokens or 0)
-                    ),
-                },
+                f"Agent run completed with model {actual_model}",
+                completed_meta,
             )
-            if deps.spend is not None:
-                from lorebinders.agent.spend import estimate_cost
 
-                cost = estimate_cost(
-                    actual_model,
-                    usage.input_tokens or 0,
-                    usage.output_tokens or 0,
+            cost: float | None = None
+            try:
+                usage = res.usage()
+                emit_observation(
+                    on_observe,
+                    ObservationType.METRIC,
+                    "agent",
+                    f"Token usage for model {actual_model}",
+                    {
+                        "model": actual_model,
+                        "input_tokens": usage.input_tokens,
+                        "output_tokens": usage.output_tokens,
+                        "total_tokens": (
+                            (usage.input_tokens or 0)
+                            + (usage.output_tokens or 0)
+                        ),
+                    },
                 )
+                if deps.spend is not None:
+                    from lorebinders.agent.spend import estimate_cost
+
+                    cost = estimate_cost(
+                        actual_model,
+                        usage.input_tokens or 0,
+                        usage.output_tokens or 0,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to collect token usage metrics: {e}")
+
+            if deps.spend is not None:
+                reserved = False
+                await deps.spend.release(estimated_cost, actual_cost=cost)
+                if cost is not None:
+                    logger.info(f"Cumulative spend: ${deps.spend.total:.4f}")
+
+            return res.output
         except Exception as e:
-            logger.warning(f"Failed to collect token usage metrics: {e}")
-
-        if cost is not None and deps.spend is not None:
-            await deps.spend.add(cost)
-            logger.info(f"Cumulative spend: ${deps.spend.total:.4f}")
-
-        return res.output
-    except Exception as e:
-        logger.error(f"Agent run failed: {e}")
-        emit_observation(
-            on_observe,
-            ObservationType.ERROR,
-            "agent",
-            f"Agent run failed: {e}",
-            {"model": model, "error": str(e)},
-        )
-        raise
+            logger.error(f"Agent run failed: {e}")
+            emit_observation(
+                on_observe,
+                ObservationType.ERROR,
+                "agent",
+                f"Agent run failed: {e}",
+                {"model": model, "error": str(e)},
+            )
+            raise
+    finally:
+        if reserved and deps.spend is not None:
+            await deps.spend.release(estimated_cost)
 
 
 def _ensure_prefix(model: str) -> str:

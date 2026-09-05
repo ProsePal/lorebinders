@@ -67,8 +67,6 @@ async def _perform_extraction(
         A dictionary mapping categories to lists of extracted entities.
     """
     async with semaphore:
-        if deps.spend is not None:
-            await deps.spend.check()
         prompt = build_extraction_user_prompt(
             text=chapter.content,
             categories=categories,
@@ -188,6 +186,7 @@ async def extract_book(
     results = await asyncio.gather(*tasks, return_exceptions=True)
     extracted: dict[int, dict[str, list[models.ExtractedEntity]]] = {}
     failed_count = 0
+    spend_error: SpendError | None = None
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
@@ -196,10 +195,13 @@ async def extract_book(
                     KeyboardInterrupt,
                     SystemExit,
                     asyncio.CancelledError,
-                    SpendError,
                 ),
             ):
                 raise r
+            if isinstance(r, SpendError):
+                if spend_error is None:
+                    spend_error = r
+                continue
             logger.error(f"Extraction task failed: {r}")
             failed_count += 1
             continue
@@ -208,10 +210,12 @@ async def extract_book(
             extracted[chapter_num] = data
 
     if len(tasks) > 0:
-        ratio = failed_count / len(tasks)
         models.emit_failure_metric(
             on_observe, "extraction", failed_count, len(tasks)
         )
+        if spend_error is not None:
+            raise spend_error
+        ratio = failed_count / len(tasks)
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count

@@ -302,8 +302,6 @@ async def _analyze_chapter_block(
         A list of analyzed entity profiles for the chapter.
     """
     async with semaphore:
-        if deps.spend is not None:
-            await deps.spend.check()
         return await _analyze_category_sequential(
             chapter,
             book_title,
@@ -362,8 +360,6 @@ async def _analyze_chapter_results_block(
     on_observe: _ObserveCb = None,
 ) -> list[models.AnalysisResult]:
     async with semaphore:
-        if deps.spend is not None:
-            await deps.spend.check()
         return await _analyze_category_results_sequential(
             chapter,
             cat_map,
@@ -563,6 +559,7 @@ async def analyze_entities(
     results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
     profiles: list[models.EntityProfile] = []
     failed_count = 0
+    spend_error: SpendError | None = None
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
@@ -571,10 +568,13 @@ async def analyze_entities(
                     KeyboardInterrupt,
                     SystemExit,
                     asyncio.CancelledError,
-                    SpendError,
                 ),
             ):
                 raise r
+            if isinstance(r, SpendError):
+                if spend_error is None:
+                    spend_error = r
+                continue
             logger.error(f"Analysis task failed: {r}")
             failed_count += 1
             continue
@@ -582,10 +582,12 @@ async def analyze_entities(
             profiles.extend(r)
 
     if len(chapter_tasks) > 0:
-        ratio = failed_count / len(chapter_tasks)
         models.emit_failure_metric(
             on_observe, "analysis", failed_count, len(chapter_tasks)
         )
+        if spend_error is not None:
+            raise spend_error
+        ratio = failed_count / len(chapter_tasks)
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count

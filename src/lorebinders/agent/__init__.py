@@ -64,9 +64,18 @@ bounds (such as 1 - (1 - threshold)^k) due to known ungated loss channels:
   explicitly returned by the model are processed. If the model omits entities
   from its response, they vanish without raising an exception; ``failed_count``
   remains 0 and the threshold gate is not triggered.
+- Spend ceiling abort channel: When a configured spend ceiling is exceeded,
+  a ``SpendError`` is raised immediately across all stages (extraction,
+  analysis, summarization, and refinement). In the gated stages (extraction,
+  analysis, summarization), failure metrics reflecting any ordinary task
+  failures accumulated prior to the abort are emitted before the
+  ``SpendError`` is re-raised, but execution aborts immediately, bypassing
+  the ratio-based failure threshold gate.
 - Refinement stage errors: In ``refine_binder_async`` (alias resolution),
-  category-level model failures are logged and discarded without a threshold
-  gate or failure metric.
+  ordinary category-level model failures are logged and discarded without a
+  threshold gate or failure metric. However, execution aborts such as
+  ``SpendError`` or process interruptions propagate immediately and fail
+  the pipeline.
 """
 
 from lorebinders.agent.factory import (

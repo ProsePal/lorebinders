@@ -147,8 +147,6 @@ async def _resolve_category_aliases(
     )
 
     async with semaphore:
-        if deps.spend is not None:
-            await deps.spend.check()
         resolution = await run_agent_async(
             agent, prompt, deps=deps, on_observe=on_observe
         )
@@ -167,9 +165,10 @@ async def resolve_aliases(
 ) -> Binder:
     """Merge semantic aliases within each category of a Binder.
 
-    Categories are resolved concurrently. A category whose model call fails
-    keeps the entities the rule-based pass produced, so alias resolution
-    never fails the pipeline.
+    Categories are resolved concurrently. A category whose model call
+    encounters ordinary errors keeps the entities the rule-based pass
+    produced. However, spend ceiling aborts (SpendError) are re-raised
+    and fail the pipeline.
 
     Args:
         binder: The Binder model to resolve, updated in-place.
@@ -195,15 +194,7 @@ async def resolve_aliases(
 
     for category, result in zip(categories, results, strict=True):
         if isinstance(result, BaseException):
-            if isinstance(
-                result,
-                (
-                    KeyboardInterrupt,
-                    SystemExit,
-                    asyncio.CancelledError,
-                    SpendError,
-                ),
-            ):
+            if isinstance(result, SpendError):
                 raise result
             logger.error(
                 f"Alias resolution failed for {category.name}: {result}"
