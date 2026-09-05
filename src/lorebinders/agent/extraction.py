@@ -11,6 +11,7 @@ from lorebinders.agent.factory import (
     build_extraction_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
@@ -185,12 +186,22 @@ async def extract_book(
     results = await asyncio.gather(*tasks, return_exceptions=True)
     extracted: dict[int, dict[str, list[models.ExtractedEntity]]] = {}
     failed_count = 0
+    spend_error: SpendError | None = None
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
-                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                r,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                ),
             ):
                 raise r
+            if isinstance(r, SpendError):
+                if spend_error is None:
+                    spend_error = r
+                continue
             logger.error(f"Extraction task failed: {r}")
             failed_count += 1
             continue
@@ -199,10 +210,12 @@ async def extract_book(
             extracted[chapter_num] = data
 
     if len(tasks) > 0:
-        ratio = failed_count / len(tasks)
         models.emit_failure_metric(
             on_observe, "extraction", failed_count, len(tasks)
         )
+        if spend_error is not None:
+            raise spend_error
+        ratio = failed_count / len(tasks)
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count

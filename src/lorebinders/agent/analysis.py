@@ -14,6 +14,7 @@ from lorebinders.agent.factory import (
     build_analysis_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.storage.provider import StorageProvider
 from lorebinders.types import SortedExtractions
 
@@ -473,7 +474,13 @@ async def analyze_entity_results(
     for result in task_results:
         if isinstance(result, BaseException):
             if isinstance(
-                result, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                result,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                    SpendError,
+                ),
             ):
                 raise result
             if raise_on_error:
@@ -552,12 +559,22 @@ async def analyze_entities(
     results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
     profiles: list[models.EntityProfile] = []
     failed_count = 0
+    spend_error: SpendError | None = None
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
-                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                r,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                ),
             ):
                 raise r
+            if isinstance(r, SpendError):
+                if spend_error is None:
+                    spend_error = r
+                continue
             logger.error(f"Analysis task failed: {r}")
             failed_count += 1
             continue
@@ -565,10 +582,12 @@ async def analyze_entities(
             profiles.extend(r)
 
     if len(chapter_tasks) > 0:
-        ratio = failed_count / len(chapter_tasks)
         models.emit_failure_metric(
             on_observe, "analysis", failed_count, len(chapter_tasks)
         )
+        if spend_error is not None:
+            raise spend_error
+        ratio = failed_count / len(chapter_tasks)
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count

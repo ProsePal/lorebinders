@@ -11,6 +11,7 @@ from lorebinders.agent.factory import (
     build_summarization_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
@@ -271,13 +272,23 @@ async def summarize_binder(
 
     results = await asyncio.gather(*chapter_tasks, return_exceptions=True)
     failed_count = 0
+    spend_error: SpendError | None = None
     for i, res in enumerate(results):
         entity, _ = tasks[i]
         if isinstance(res, BaseException):
             if isinstance(
-                res, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                res,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                ),
             ):
                 raise res
+            if isinstance(res, SpendError):
+                if spend_error is None:
+                    spend_error = res
+                continue
             logger.error(f"Summarization failed for {entity.name}: {res}")
             failed_count += 1
         elif isinstance(res, str):
@@ -289,10 +300,12 @@ async def summarize_binder(
             failed_count += 1
 
     if len(chapter_tasks) > 0:
-        ratio = failed_count / len(chapter_tasks)
         models.emit_failure_metric(
             on_observe, "summarization", failed_count, len(chapter_tasks)
         )
+        if spend_error is not None:
+            raise spend_error
+        ratio = failed_count / len(chapter_tasks)
         if (
             ratio > deps.settings.failure_threshold
             and failed_count >= deps.settings.failure_threshold_min_count
