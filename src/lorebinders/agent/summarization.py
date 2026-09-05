@@ -244,7 +244,10 @@ async def summarize_binder(
         across the full pipeline. However, for a small number of tasks (N),
         the min-count floor dominates: e.g. at 3 tasks up to 33% loss is
         tolerated, at 2 tasks up to 50%, and at 1 task a 100% loss is
-        tolerated silently. Output is only guaranteed up to this bound,
+        tolerated silently. Compounded across all three stages
+        (extraction, analysis, summarization), a 3-chapter book can lose
+        the entire book (33% → 50% → 100%) while every individual per-stage
+        gate passes. Output is only guaranteed up to this bound,
         not guaranteed to be complete.
     """
     tasks = _collect_tasks(binder)

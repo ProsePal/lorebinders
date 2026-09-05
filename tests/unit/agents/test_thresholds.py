@@ -348,3 +348,129 @@ async def test_extraction_min_count_floor_governs_small_books(
             assert len(results) == 2
             assert 1 in results
             assert 3 in results
+
+
+@pytest.mark.anyio
+async def test_small_n_loss_compounds_across_all_stages(
+    base_deps: models.AgentDeps,
+    run_config: models.RunConfiguration,
+    mock_storage: Any,
+) -> None:
+    """A 3-chapter book can lose all content while passing gates.
+
+    Compounding loss across extraction (33%), analysis (50%), and
+    summarization (100%) can discard the entire book without triggering
+    any per-stage threshold.
+    """
+    book = models.Book(
+        title="Test Book",
+        author="Test Author",
+        chapters=[
+            models.Chapter(number=1, title="Ch1", content=""),
+            models.Chapter(number=2, title="Ch2", content=""),
+            models.Chapter(number=3, title="Ch3", content=""),
+        ],
+    )
+
+    with patch(
+        "lorebinders.agent.extraction._extract_chapter", new_callable=AsyncMock
+    ) as mock_extract:
+        mock_extract.side_effect = [
+            (
+                1,
+                {
+                    "Characters": [
+                        models.ExtractedEntity(
+                            name="Ent1",
+                            mentions=[1],
+                            presence_type="literal_entity",
+                        )
+                    ]
+                },
+            ),
+            RuntimeError("Fail Ch2 extraction"),
+            (
+                3,
+                {
+                    "Characters": [
+                        models.ExtractedEntity(
+                            name="Ent3",
+                            mentions=[3],
+                            presence_type="literal_entity",
+                        )
+                    ]
+                },
+            ),
+        ]
+        extraction_results = await extract_book(
+            book=book,
+            agent=AsyncMock(),
+            deps=base_deps,
+            categories=["Characters"],
+            config=run_config,
+            storage=mock_storage,
+        )
+        assert len(extraction_results) == 2
+        assert 1 in extraction_results
+        assert 3 in extraction_results
+
+    surviving_entities = {"Characters": {"Ent1": [1], "Ent3": [3]}}
+
+    with patch(
+        "lorebinders.agent.analysis._analyze_chapter_block",
+        new_callable=AsyncMock,
+    ) as mock_analyze:
+        mock_analyze.side_effect = [
+            RuntimeError("Fail Ch1 analysis"),
+            [
+                models.EntityProfile(
+                    name="Ent3",
+                    category="Characters",
+                    chapter_number=3,
+                    book_title="Test Book",
+                    traits={"Mood": ["Calm"]},
+                )
+            ],
+        ]
+        analysis_results = await analyze_entities(
+            entities=surviving_entities,
+            book=book,
+            agent=AsyncMock(),
+            deps=base_deps,
+            effective_traits={"Characters": ["Mood"]},
+            storage=mock_storage,
+        )
+        assert len(analysis_results) == 1
+        assert analysis_results[0].name == "Ent3"
+
+    binder = models.Binder(
+        categories={
+            "Characters": models.CategoryRecord(
+                name="Characters",
+                entities={
+                    "Ent3": models.EntityRecord(
+                        name="Ent3",
+                        category="Characters",
+                        appearances={
+                            "Test Book": models.ChapterAppearances(
+                                chapters={3: models.EntityAppearance()}
+                            )
+                        },
+                    )
+                },
+            )
+        }
+    )
+
+    with patch(
+        "lorebinders.agent.summarization._summarize_entity",
+        new_callable=AsyncMock,
+    ) as mock_summarize:
+        mock_summarize.side_effect = RuntimeError("Fail summarize Ent3")
+        await summarize_binder(
+            binder=binder,
+            agent=AsyncMock(),
+            deps=base_deps,
+            storage=mock_storage,
+        )
+        assert binder.categories["Characters"].entities["Ent3"].summary is None
