@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.messages import ModelResponse
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputDataT, OutputSpec
@@ -136,11 +137,10 @@ async def run_agent_async(
         The output data from the agent run.
     """
     if isinstance(agent.model, FallbackModel):
-        model = getattr(agent.model.models[0], "model_name", str(agent.model))
-    elif hasattr(agent.model, "model_name"):
-        model = getattr(agent.model, "model_name", str(agent.model))
+        model = agent.model.models[0].model_name
     else:
-        model = str(agent.model) or "unknown"
+        assert isinstance(agent.model, Model)
+        model = agent.model.model_name
 
     logger.debug(f"Running agent (async) with model: {model}")
     meta: dict[str, str | int | float | bool | None] = {"model": model}
@@ -167,19 +167,34 @@ async def run_agent_async(
 
         actual_model = model
         try:
-            if hasattr(res, "all_messages") and res.all_messages():
-                last_msg = res.all_messages()[-1]
-                if hasattr(last_msg, "model_name") and last_msg.model_name:
-                    actual_model = last_msg.model_name
+            if hasattr(res, "all_messages"):
+                for msg in reversed(res.all_messages()):
+                    if isinstance(msg, ModelResponse) and msg.model_name:
+                        actual_model = msg.model_name
+                        break
+                else:
+                    logger.warning(
+                        "Failed to re-derive actual model: "
+                        "no ModelResponse with model_name found in message "
+                        "history"
+                    )
+            else:
+                logger.warning(
+                    "Failed to re-derive actual model: "
+                    "result has no all_messages method"
+                )
         except Exception as e:
             logger.warning(f"Failed to re-derive actual model: {e}")
 
+        completed_meta: dict[str, str | int | float | bool | None] = {
+            "model": actual_model
+        }
         emit_observation(
             on_observe,
             ObservationType.AGENT_RUN_COMPLETED,
             "agent",
             f"Agent run completed with model {actual_model}",
-            meta,
+            completed_meta,
         )
 
         cost: float | None = None
