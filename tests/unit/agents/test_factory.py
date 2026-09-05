@@ -1,10 +1,12 @@
 import logging
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.messages import ModelRequest
 from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.output import PromptedOutput
 
@@ -16,6 +18,7 @@ from lorebinders.agent.factory import (
     load_prompt_from_assets,
     run_agent_async,
 )
+from lorebinders.agent.spend import Spend, estimate_cost
 from lorebinders.models import (
     AgentDeps,
     ExtractionResult,
@@ -189,8 +192,8 @@ async def test_run_agent_async_with_fallback_model_initial_model_name() -> None:
     def on_observe(event: ObservationEvent) -> None:
         observations.append(event)
 
-    primary = TestModel()
-    fallback = TestModel()
+    primary = TestModel(model_name="primary-test-model")
+    fallback = TestModel(model_name="fallback-test-model")
     agent = create_agent(
         primary,
         deps_type=AgentDeps,
@@ -211,10 +214,21 @@ async def test_run_agent_async_with_fallback_model_initial_model_name() -> None:
         o for o in observations if o.type == ObservationType.AGENT_RUN_STARTED
     ]
     assert len(start_events) == 1
+    assert start_events[0].metadata.get("model") == "primary-test-model"
     assert start_events[0].metadata.get("model") == primary.model_name
     assert not str(start_events[0].metadata.get("model", "")).startswith(
         "fallback:"
     )
+
+    completed_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_COMPLETED
+    ]
+    assert len(completed_events) == 1
+    assert (
+        completed_events[0].message
+        == f"Agent run completed with model {primary.model_name}"
+    )
+    assert completed_events[0].metadata.get("model") == "primary-test-model"
 
 
 @pytest.mark.anyio
@@ -229,8 +243,8 @@ async def test_run_agent_async_actual_model_rederivation_failure_logs_warning(
     def on_observe(event: ObservationEvent) -> None:
         observations.append(event)
 
-    primary = TestModel()
-    fallback = TestModel()
+    primary = TestModel(model_name="primary-test-model")
+    fallback = TestModel(model_name="fallback-test-model")
     agent = create_agent(
         primary,
         deps_type=AgentDeps,
@@ -267,3 +281,182 @@ async def test_run_agent_async_actual_model_rederivation_failure_logs_warning(
         completed_events[0].message
         == f"Agent run completed with model {primary.model_name}"
     )
+    assert completed_events[0].metadata.get("model") == "primary-test-model"
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_fallback_serves_request_updates_model_and_spend(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify that when fallback serves the request, observations and spend
+    reflect the fallback model.
+    """
+    observations: list[ObservationEvent] = []
+
+    def on_observe(event: ObservationEvent) -> None:
+        observations.append(event)
+
+    async def fail(*args: Any, **kwargs: Any) -> Any:
+        raise ModelHTTPError(status_code=403, model_name="openai:gpt-5.4-nano")
+
+    primary = FunctionModel(fail)
+    fallback = TestModel(model_name="openrouter:bytedance-seed/seed-1.6")
+    agent = create_agent(
+        primary,
+        deps_type=AgentDeps,
+        output_type=ExtractionResult,
+        fallback=fallback,
+    )
+
+    spend = Spend()
+    deps = AgentDeps(
+        settings=get_settings(),
+        prompt_loader=load_prompt_from_assets,
+        spend=spend,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await run_agent_async(
+            agent, "test prompt", deps=deps, on_observe=on_observe
+        )
+
+    assert "Failed to re-derive actual model" not in caplog.text
+
+    start_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_STARTED
+    ]
+    assert len(start_events) == 1
+    assert start_events[0].metadata.get("model") == "function:fail:"
+
+    completed_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_COMPLETED
+    ]
+    assert len(completed_events) == 1
+    assert (
+        completed_events[0].message
+        == "Agent run completed with model openrouter:bytedance-seed/seed-1.6"
+    )
+    assert (
+        completed_events[0].metadata.get("model")
+        == "openrouter:bytedance-seed/seed-1.6"
+    )
+
+    metric_events = [
+        o for o in observations if o.type == ObservationType.METRIC
+    ]
+    assert len(metric_events) == 1
+    assert (
+        metric_events[0].metadata.get("model")
+        == "openrouter:bytedance-seed/seed-1.6"
+    )
+
+    in_tokens = int(metric_events[0].metadata.get("input_tokens") or 0)
+    out_tokens = int(metric_events[0].metadata.get("output_tokens") or 0)
+    expected_cost = estimate_cost(
+        "openrouter:bytedance-seed/seed-1.6",
+        in_tokens,
+        out_tokens,
+    )
+    generic_cost = estimate_cost(
+        "openai:gpt-5.4-nano",
+        in_tokens,
+        out_tokens,
+    )
+    assert spend.total == expected_cost
+    assert spend.total < generic_cost
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_no_model_response_in_history_logs_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify warning is logged when message history has no ModelResponse with
+    model_name.
+    """
+    observations: list[ObservationEvent] = []
+
+    def on_observe(event: ObservationEvent) -> None:
+        observations.append(event)
+
+    primary = TestModel(model_name="primary-test-model")
+    fallback = TestModel(model_name="fallback-test-model")
+    agent = create_agent(
+        primary,
+        deps_type=AgentDeps,
+        output_type=ExtractionResult,
+        fallback=fallback,
+    )
+
+    deps = AgentDeps(
+        settings=get_settings(),
+        prompt_loader=load_prompt_from_assets,
+    )
+
+    original_run = agent.run
+
+    async def mock_run(*args: Any, **kwargs: Any) -> Any:
+        res = await original_run(*args, **kwargs)
+        res.all_messages = lambda: [
+            ModelRequest(parts=[]),
+        ]
+        return res
+
+    with patch.object(agent, "run", side_effect=mock_run):
+        with caplog.at_level(logging.WARNING):
+            await run_agent_async(
+                agent, "test prompt", deps=deps, on_observe=on_observe
+            )
+
+    assert "Failed to re-derive actual model" in caplog.text
+    completed_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_COMPLETED
+    ]
+    assert len(completed_events) == 1
+    assert (
+        completed_events[0].message
+        == f"Agent run completed with model {primary.model_name}"
+    )
+    assert completed_events[0].metadata.get("model") == "primary-test-model"
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_no_all_messages_attribute_logs_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify warning is logged when result lacks all_messages attribute."""
+    observations: list[ObservationEvent] = []
+
+    def on_observe(event: ObservationEvent) -> None:
+        observations.append(event)
+
+    primary = TestModel(model_name="primary-test-model")
+    agent = create_agent(
+        primary,
+        deps_type=AgentDeps,
+        output_type=ExtractionResult,
+    )
+
+    deps = AgentDeps(
+        settings=get_settings(),
+        prompt_loader=load_prompt_from_assets,
+    )
+
+    mock_res = MagicMock(spec=["output", "usage"])
+    mock_res.output = ExtractionResult(results=[])
+    mock_res.usage.return_value = MagicMock(input_tokens=10, output_tokens=5)
+
+    async def mock_run(*args: Any, **kwargs: Any) -> Any:
+        return mock_res
+
+    with patch.object(agent, "run", side_effect=mock_run):
+        with caplog.at_level(logging.WARNING):
+            await run_agent_async(
+                agent, "test prompt", deps=deps, on_observe=on_observe
+            )
+
+    assert "Failed to re-derive actual model" in caplog.text
+    completed_events = [
+        o for o in observations if o.type == ObservationType.AGENT_RUN_COMPLETED
+    ]
+    assert len(completed_events) == 1
+    assert completed_events[0].metadata.get("model") == "primary-test-model"
