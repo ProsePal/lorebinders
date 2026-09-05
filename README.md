@@ -94,6 +94,14 @@ your shell or use a `.env` file in the working directory.
 - `LOREBINDERS_SUMMARIZATION_MODEL`: The AI model used for summarization
   tasks.
   - Default: `openrouter:bytedance/seed-1.6-flash`
+- `LOREBINDERS_FAILURE_THRESHOLD`: Maximum tolerable failure ratio (0.0 to 1.0)
+  for pipeline stages (extraction, analysis, summarization) before an error
+  is raised.
+  - Default: `0.2`
+- `LOREBINDERS_FAILURE_THRESHOLD_MIN_COUNT`: Minimum number of failed tasks
+  required in a pipeline stage before `failure_threshold` aborts execution.
+  Prevents aborting small books or small entity sets on isolated failures.
+  - Default: `2`
 - `LOREBINDERS_WORKSPACE_BASE_PATH`: Base directory for storing intermediate
   and output files.
   - Default: `work`

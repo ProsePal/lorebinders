@@ -510,17 +510,10 @@ async def analyze_entities(
         A list of analyzed entity profiles for the book.
 
     Note:
-        Failure thresholds are per-stage and independent. The actual
-        tolerated per-stage loss is max(threshold, (min_count-1)/N). For
-        large N, up to ~1-(1-threshold)^3 total content loss can occur
-        across the full pipeline. However, for a small number of tasks (N),
-        the min-count floor dominates: e.g. at 3 tasks up to 33% loss is
-        tolerated, at 2 tasks up to 50%, and at 1 task a 100% loss is
-        tolerated silently. Compounded across all three stages
-        (extraction, analysis, summarization), a 3-chapter book can lose
-        the entire book (33% → 50% → 100%) while every individual per-stage
-        gate passes. Output is only guaranteed up to this bound,
-        not guaranteed to be complete.
+        Failure thresholds are evaluated per stage. For details on threshold
+        mechanics, small-N floors, compounding degradation across stages,
+        and known ungated channels, see the :mod:`lorebinders.agent` module
+        docstring.
     """
     ch_map = {ch.number: ch for ch in book.chapters}
     ch_entities = _group_entities_by_chapter(entities)

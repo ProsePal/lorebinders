@@ -8,7 +8,10 @@ from lorebinders import models
 from lorebinders.agent.analysis import analyze_entities
 from lorebinders.agent.extraction import extract_book
 from lorebinders.agent.summarization import summarize_binder
+from lorebinders.refinement import refine_binder_async
+from lorebinders.refinement.sorting import sort_extractions
 from lorebinders.settings import Settings
+from lorebinders.workflow import _aggregate_to_binder
 
 
 @pytest.fixture
@@ -351,17 +354,146 @@ async def test_extraction_min_count_floor_governs_small_books(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(("min_count", "aborts"), [(1, True), (2, False)])
+async def test_analysis_min_count_floor_governs_small_books(
+    min_count: int,
+    aborts: bool,
+    base_deps: models.AgentDeps,
+    mock_storage: Any,
+) -> None:
+    """One failure in two chapter analysis tasks is 50%, over the 20% ratio.
+
+    Only the min-count floor prevents the abort, so lowering the floor
+    to 1 must make the same scenario raise.
+    """
+    base_deps.settings.failure_threshold_min_count = min_count
+    book = models.Book(
+        title="Test Book",
+        author="Test Author",
+        chapters=[
+            models.Chapter(number=1, title="Ch1", content=""),
+            models.Chapter(number=3, title="Ch3", content=""),
+        ],
+    )
+    entities = {"Characters": {"Ent1": [1], "Ent3": [3]}}
+
+    with patch(
+        "lorebinders.agent.analysis._analyze_chapter_block",
+        new_callable=AsyncMock,
+    ) as mock_analyze:
+        mock_analyze.side_effect = [
+            RuntimeError("Fail Ch1 analysis"),
+            [
+                models.EntityProfile(
+                    name="Ent3",
+                    category="Characters",
+                    chapter_number=3,
+                    book_title="Test Book",
+                    traits={"Mood": ["Calm"]},
+                )
+            ],
+        ]
+
+        if aborts:
+            with pytest.raises(RuntimeError, match="exceeding 20% threshold"):
+                await analyze_entities(
+                    entities=entities,
+                    book=book,
+                    agent=AsyncMock(),
+                    deps=base_deps,
+                    effective_traits={"Characters": ["Mood"]},
+                    storage=mock_storage,
+                )
+        else:
+            results = await analyze_entities(
+                entities=entities,
+                book=book,
+                agent=AsyncMock(),
+                deps=base_deps,
+                effective_traits={"Characters": ["Mood"]},
+                storage=mock_storage,
+            )
+            assert len(results) == 1
+            assert results[0].name == "Ent3"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("min_count", "aborts"), [(1, True), (2, False)])
+async def test_summarization_min_count_floor_governs_small_books(
+    min_count: int,
+    aborts: bool,
+    base_deps: models.AgentDeps,
+    mock_storage: Any,
+) -> None:
+    """One failure in one summarization task is 100%, over the 20% ratio.
+
+    Only the min-count floor prevents the abort, so lowering the floor
+    to 1 must make the same scenario raise.
+    """
+    base_deps.settings.failure_threshold_min_count = min_count
+    binder = models.Binder(
+        categories={
+            "Characters": models.CategoryRecord(
+                name="Characters",
+                entities={
+                    "Ent3": models.EntityRecord(
+                        name="Ent3",
+                        category="Characters",
+                        appearances={
+                            "Test Book": models.ChapterAppearances(
+                                chapters={3: models.EntityAppearance()}
+                            )
+                        },
+                    )
+                },
+            )
+        }
+    )
+
+    with patch(
+        "lorebinders.agent.summarization._summarize_entity",
+        new_callable=AsyncMock,
+    ) as mock_summarize:
+        mock_summarize.side_effect = RuntimeError("Fail summarize Ent3")
+
+        if aborts:
+            with pytest.raises(RuntimeError, match="exceeding 20% threshold"):
+                await summarize_binder(
+                    binder=binder,
+                    agent=AsyncMock(),
+                    deps=base_deps,
+                    storage=mock_storage,
+                )
+        else:
+            await summarize_binder(
+                binder=binder,
+                agent=AsyncMock(),
+                deps=base_deps,
+                storage=mock_storage,
+            )
+            mock_summarize.assert_awaited_once()
+            assert (
+                binder.categories["Characters"].entities["Ent3"].summary is None
+            )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("min_count", "aborts"), [(1, True), (2, False)])
 async def test_small_n_loss_compounds_across_all_stages(
+    min_count: int,
+    aborts: bool,
     base_deps: models.AgentDeps,
     run_config: models.RunConfiguration,
     mock_storage: Any,
 ) -> None:
-    """A 3-chapter book can lose all content while passing gates.
+    """Small books can suffer compounding degradation across pipeline stages.
 
     Compounding loss across extraction (33%), analysis (50%), and
-    summarization (100%) can discard the entire book without triggering
-    any per-stage threshold.
+    summarization (100% of surviving entity summaries) yields degraded
+    output without triggering per-stage thresholds under min-count floor
+    of 2, while aborting if the floor is lowered to 1.
     """
+    base_deps.settings.failure_threshold_min_count = min_count
     book = models.Book(
         title="Test Book",
         author="Test Author",
@@ -402,6 +534,19 @@ async def test_small_n_loss_compounds_across_all_stages(
                 },
             ),
         ]
+
+        if aborts:
+            with pytest.raises(RuntimeError, match="exceeding 20% threshold"):
+                await extract_book(
+                    book=book,
+                    agent=AsyncMock(),
+                    deps=base_deps,
+                    categories=["Characters"],
+                    config=run_config,
+                    storage=mock_storage,
+                )
+            return
+
         extraction_results = await extract_book(
             book=book,
             agent=AsyncMock(),
@@ -414,7 +559,9 @@ async def test_small_n_loss_compounds_across_all_stages(
         assert 1 in extraction_results
         assert 3 in extraction_results
 
-    surviving_entities = {"Characters": {"Ent1": [1], "Ent3": [3]}}
+    sorted_ext = sort_extractions(
+        extraction_results, run_config.narrator_config.name
+    )
 
     with patch(
         "lorebinders.agent.analysis._analyze_chapter_block",
@@ -433,7 +580,7 @@ async def test_small_n_loss_compounds_across_all_stages(
             ],
         ]
         analysis_results = await analyze_entities(
-            entities=surviving_entities,
+            entities=sorted_ext,
             book=book,
             agent=AsyncMock(),
             deps=base_deps,
@@ -443,23 +590,14 @@ async def test_small_n_loss_compounds_across_all_stages(
         assert len(analysis_results) == 1
         assert analysis_results[0].name == "Ent3"
 
-    binder = models.Binder(
-        categories={
-            "Characters": models.CategoryRecord(
-                name="Characters",
-                entities={
-                    "Ent3": models.EntityRecord(
-                        name="Ent3",
-                        category="Characters",
-                        appearances={
-                            "Test Book": models.ChapterAppearances(
-                                chapters={3: models.EntityAppearance()}
-                            )
-                        },
-                    )
-                },
-            )
-        }
+    raw_binder = _aggregate_to_binder(
+        analysis_results, tracking=run_config.appearance_tracking
+    )
+    binder = await refine_binder_async(
+        raw_binder,
+        narrator_name=run_config.narrator_config.name,
+        alias_agent=AsyncMock(),
+        deps=base_deps,
     )
 
     with patch(
@@ -473,4 +611,7 @@ async def test_small_n_loss_compounds_across_all_stages(
             deps=base_deps,
             storage=mock_storage,
         )
-        assert binder.categories["Characters"].entities["Ent3"].summary is None
+        mock_summarize.assert_awaited_once()
+        entity = binder.categories["Characters"].entities["Ent3"]
+        assert entity.summary is None
+        assert entity.appearances
