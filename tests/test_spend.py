@@ -31,24 +31,34 @@ from lorebinders.settings import Settings
 
 @pytest.mark.anyio
 async def test_spend_limit() -> None:
-    """Verify Spend.add enforces ceiling threshold."""
+    """Verify Spend enforces ceiling threshold on reservation and release."""
     spend = Spend(limit=1.0)
 
-    await spend.add(0.5)
+    await spend.reserve(0.5)
+    assert spend.reserved == 0.5
+    await spend.release(0.5, actual_cost=0.5)
     assert spend.total == 0.5
-    await spend.add(0.5)
+    assert spend.reserved == 0.0
+
+    await spend.reserve(0.5)
+    assert spend.reserved == 0.5
+    await spend.release(0.5, actual_cost=0.5)
     assert spend.total == 1.0
+    assert spend.reserved == 0.0
 
     with pytest.raises(SpendError):
-        await spend.add(0.1)
+        await spend.reserve(0.1)
 
 
 @pytest.mark.anyio
 async def test_spend_no_limit() -> None:
     """Verify Spend allows unlimited spend when limit is None."""
     spend = Spend(limit=None)
-    await spend.add(1000.0)
+    await spend.reserve(1000.0)
+    assert spend.reserved == 1000.0
+    await spend.release(1000.0, actual_cost=1000.0)
     assert spend.total == 1000.0
+    assert spend.reserved == 0.0
 
 
 @pytest.mark.anyio
@@ -81,14 +91,12 @@ def test_estimate_cost_slug_match() -> None:
 
 
 @pytest.mark.anyio
-async def test_spend_check_and_reserve() -> None:
-    """Verify check, reserve, and release ceiling validation."""
+async def test_spend_reserve_and_release() -> None:
+    """Verify reserve and release ceiling validation."""
     spend = Spend(limit=1.0)
-    await spend.check()
 
     await spend.reserve(0.5)
     assert spend.reserved == 0.5
-    await spend.check()
 
     with pytest.raises(
         SpendError, match="Spend ceiling exceeded: \\$1.10 of \\$1.00"
@@ -102,13 +110,65 @@ async def test_spend_check_and_reserve() -> None:
     with pytest.raises(
         SpendError, match="Spend ceiling exceeded: \\$1.10 of \\$1.00"
     ):
-        await spend.add(0.6)
+        await spend.reserve(0.6)
 
     unlimited = Spend(limit=None)
     await unlimited.reserve(50_000.0)
     await unlimited.release(50_000.0, actual_cost=50_000.0)
-    await unlimited.check()
     assert unlimited.total == 50_000.0
+    assert unlimited.reserved == 0.0
+
+
+@pytest.mark.anyio
+async def test_spend_release_ceiling_check_on_actual_cost() -> None:
+    """Verify release enforces spend ceiling when recording actual cost."""
+    spend = Spend(limit=1.0)
+    await spend.reserve(0.5)
+    with pytest.raises(
+        SpendError, match="Spend ceiling exceeded: \\$1.20 of \\$1.00"
+    ):
+        await spend.release(estimated_cost=0.5, actual_cost=1.2)
+    assert spend.total == 1.2
+    assert spend.reserved == 0.0
+
+
+@pytest.mark.anyio
+async def test_spend_release_accounts_for_reserved() -> None:
+    """Verify release ceiling check accounts for remaining reserved spend."""
+    spend = Spend(limit=1.0)
+    await spend.reserve(0.6)
+    await spend.reserve(0.3)
+    with pytest.raises(
+        SpendError, match="Spend ceiling exceeded: \\$1.10 of \\$1.00"
+    ):
+        await spend.release(estimated_cost=0.3, actual_cost=0.5)
+    assert spend.total == 0.5
+    assert spend.reserved == pytest.approx(0.6)
+
+
+@pytest.mark.anyio
+async def test_spend_release_clamps_reserved_at_zero() -> None:
+    """Verify release clamps reserved spend at zero instead of negative."""
+    spend = Spend(limit=1.0)
+    await spend.reserve(0.2)
+    await spend.release(estimated_cost=0.5)
+    assert spend.reserved == 0.0
+
+    clean_spend = Spend(limit=1.0)
+    await clean_spend.release(estimated_cost=0.5)
+    assert clean_spend.reserved == 0.0
+
+
+@pytest.mark.anyio
+async def test_spend_check_ceiling_effective_reports_total() -> None:
+    """Verify error reports total spend when total alone exceeds limit."""
+    spend = Spend(limit=1.0)
+    spend.total = 1.5
+    spend.reserved = 0.5
+    with pytest.raises(
+        SpendError, match="Spend ceiling exceeded: \\$1.50 of \\$1.00"
+    ):
+        await spend.reserve(0.2)
 
 
 @pytest.mark.anyio
@@ -190,6 +250,173 @@ async def test_run_agent_async_exception_releases_reservation() -> None:
 
     assert spend.reserved == 0.0
     assert spend.total == 0.0
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_observation_failure_no_leak() -> None:
+    """Verify observation failure does not leak spend reservation."""
+    spend = Spend(limit=0.05)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda x: "prompt", spend=spend
+    )
+    model = TestModel()
+    agent = Agent(model, deps_type=AgentDeps)
+
+    def failing_observer(event: ObservationEvent) -> None:
+        raise RuntimeError("observer error")
+
+    for _ in range(5):
+        with patch("lorebinders.agent.spend.estimate_cost", return_value=0.01):
+            with pytest.raises(RuntimeError, match="observer error"):
+                await run_agent_async(
+                    agent, "prompt", deps, on_observe=failing_observer
+                )
+
+    assert spend.reserved == 0.0
+    assert spend.total == 0.0
+
+    with patch("lorebinders.agent.spend.estimate_cost", return_value=0.01):
+        await run_agent_async(agent, "prompt", deps)
+
+    assert spend.reserved == 0.0
+    assert spend.total == 0.01
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_deepcopy_failure_no_leak() -> None:
+    """Verify settings deepcopy failure does not leak spend reservation."""
+    spend = Spend(limit=0.05)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda x: "prompt", spend=spend
+    )
+    model = TestModel()
+    agent = Agent(model, deps_type=AgentDeps)
+
+    with patch("lorebinders.agent.spend.estimate_cost", return_value=0.01):
+        with patch("copy.deepcopy", side_effect=RuntimeError("deepcopy error")):
+            with pytest.raises(RuntimeError, match="deepcopy error"):
+                await run_agent_async(
+                    agent, "prompt", deps, model_settings={"temperature": 0.7}
+                )
+
+    assert spend.reserved == 0.0
+    assert spend.total == 0.0
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_reservation_accounts_for_output_tokens() -> None:
+    """Verify reservation accounts for estimated output tokens."""
+    spend = Spend(limit=1.0)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda x: "prompt", spend=spend
+    )
+    model = TestModel()
+    agent = Agent(model, deps_type=AgentDeps)
+
+    prompt = "a" * 400
+    in_only_cost = estimate_cost(model.model_name, 100, 0)
+
+    reserved_amount = 0.0
+    original_run = agent.run
+
+    async def mock_run(*args: Any, **kwargs: Any) -> Any:
+        nonlocal reserved_amount
+        reserved_amount = spend.reserved
+        return await original_run(*args, **kwargs)
+
+    with patch.object(agent, "run", side_effect=mock_run):
+        await run_agent_async(agent, prompt, deps)
+
+    expected_cost = estimate_cost(model.model_name, 100, 100)
+    assert reserved_amount == expected_cost
+    assert reserved_amount > in_only_cost
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_empty_prompt_reserves_minimum_tokens() -> None:
+    """Verify empty prompt reserves minimum token count."""
+    spend = Spend(limit=1.0)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda x: "prompt", spend=spend
+    )
+    model = TestModel()
+    agent = Agent(model, deps_type=AgentDeps)
+
+    reserved_amount = 0.0
+    original_run = agent.run
+
+    async def mock_run(*args: Any, **kwargs: Any) -> Any:
+        nonlocal reserved_amount
+        reserved_amount = spend.reserved
+        return await original_run(*args, **kwargs)
+
+    with patch.object(agent, "run", side_effect=mock_run):
+        await run_agent_async(agent, "", deps)
+
+    expected_min_cost = estimate_cost(model.model_name, 1, 1)
+    assert reserved_amount == expected_min_cost
+    assert reserved_amount > 0.0
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_prevents_double_release() -> None:
+    """Verify agent run does not double release spend in finally block."""
+    spend = Spend(limit=10.0)
+    await spend.reserve(0.5)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda x: "prompt", spend=spend
+    )
+    model = TestModel()
+    agent = Agent(model, deps_type=AgentDeps)
+
+    await run_agent_async(agent, "test prompt", deps)
+
+    assert spend.reserved == pytest.approx(0.5)
+
+
+@pytest.mark.anyio
+async def test_run_agent_async_prevents_double_release_on_error() -> None:
+    """Verify release error does not trigger a duplicate release in finally."""
+    spend = Spend(limit=0.5)
+    await spend.reserve(0.3)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda x: "prompt", spend=spend
+    )
+    model = TestModel()
+    agent = Agent(model, deps_type=AgentDeps)
+
+    with patch("lorebinders.agent.spend.estimate_cost", side_effect=[0.1, 0.5]):
+        with pytest.raises(SpendError):
+            await run_agent_async(agent, "test prompt", deps)
+
+    assert spend.reserved == pytest.approx(0.3)
+
+
+@pytest.mark.anyio
+async def test_concurrent_real_agent_runs_do_not_overshoot_ceiling() -> None:
+    """Verify concurrent real agent runs do not exceed the spend ceiling."""
+    model = TestModel()
+    prompt = "a" * 208
+    single_res = estimate_cost(model.model_name, 52, 52)
+    ceiling = single_res * 2
+    spend = Spend(limit=ceiling)
+    settings = Settings(max_concurrency=10)
+    deps = AgentDeps(
+        settings=settings, prompt_loader=lambda x: "prompt", spend=spend
+    )
+    agent = Agent(model, deps_type=AgentDeps)
+
+    results = await asyncio.gather(
+        *(run_agent_async(agent, prompt, deps) for _ in range(10)),
+        return_exceptions=True,
+    )
+
+    spend_errors = [r for r in results if isinstance(r, SpendError)]
+    successes = [r for r in results if not isinstance(r, BaseException)]
+    assert len(spend_errors) == 8
+    assert len(successes) == 2
+    assert spend.total <= ceiling
+    assert spend.reserved == 0.0
 
 
 @pytest.mark.anyio

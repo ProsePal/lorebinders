@@ -25,15 +25,6 @@ class Spend:
                 f"${self.limit:.2f}. Aborting run."
             )
 
-    async def check(self, additional: float = 0.0) -> None:
-        """Verify spend has not exceeded ceiling.
-
-        Raises:
-            SpendError: If the ceiling is exceeded.
-        """
-        async with self._lock:
-            self._check_ceiling(additional)
-
     async def reserve(self, estimated_cost: float = 0.0) -> None:
         """Reserve spend before dispatch, raising if ceiling exceeded."""
         async with self._lock:
@@ -49,12 +40,6 @@ class Spend:
             if actual_cost is not None:
                 self.total += actual_cost
                 self._check_ceiling()
-
-    async def add(self, cost: float) -> None:
-        """Record spend, raising once the ceiling is crossed."""
-        async with self._lock:
-            self.total += cost
-            self._check_ceiling()
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:

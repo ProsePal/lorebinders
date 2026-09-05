@@ -148,28 +148,31 @@ async def run_agent_async(
         from lorebinders.agent.spend import estimate_cost
 
         estimated_input_tokens = max(1, len(user_prompt) // 4)
-        estimated_cost = estimate_cost(model, estimated_input_tokens, 0)
+        estimated_output_tokens = estimated_input_tokens
+        estimated_cost = estimate_cost(
+            model, estimated_input_tokens, estimated_output_tokens
+        )
         await deps.spend.reserve(estimated_cost)
         reserved = True
 
-    logger.debug(f"Running agent (async) with model: {model}")
-    meta: dict[str, str | int | float | bool | None] = {"model": model}
-    emit_observation(
-        on_observe,
-        ObservationType.AGENT_RUN_STARTED,
-        "agent",
-        f"Running agent with model {model}",
-        meta,
-    )
-    import copy
-
-    safe_settings = (
-        copy.deepcopy(agent.model_settings) if agent.model_settings else {}
-    )
-    if model_settings:
-        safe_settings.update(copy.deepcopy(model_settings))
-
     try:
+        logger.debug(f"Running agent (async) with model: {model}")
+        meta: dict[str, str | int | float | bool | None] = {"model": model}
+        emit_observation(
+            on_observe,
+            ObservationType.AGENT_RUN_STARTED,
+            "agent",
+            f"Running agent with model {model}",
+            meta,
+        )
+        import copy
+
+        safe_settings = (
+            copy.deepcopy(agent.model_settings) if agent.model_settings else {}
+        )
+        if model_settings:
+            safe_settings.update(copy.deepcopy(model_settings))
+
         try:
             res = await agent.run(
                 user_prompt, deps=deps, model_settings=safe_settings
