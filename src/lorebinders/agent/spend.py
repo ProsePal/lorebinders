@@ -14,15 +14,33 @@ class Spend:
         self.total = 0.0
         self._lock = asyncio.Lock()
 
+    def _check_ceiling(self) -> None:
+        """Raise SpendError if the spend ceiling is exceeded."""
+        if self.limit is not None and self.total > self.limit:
+            raise SpendError(
+                f"Spend ceiling exceeded: ${self.total:.2f} of "
+                f"${self.limit:.2f}. Aborting run."
+            )
+
+    @property
+    def exceeded(self) -> bool:
+        """Whether current spend exceeds the configured limit."""
+        return self.limit is not None and self.total > self.limit
+
+    async def check(self) -> None:
+        """Verify spend has not exceeded ceiling.
+
+        Raises:
+            SpendError: If the ceiling is exceeded.
+        """
+        async with self._lock:
+            self._check_ceiling()
+
     async def add(self, cost: float) -> None:
         """Record spend, raising once the ceiling is crossed."""
         async with self._lock:
             self.total += cost
-            if self.limit is not None and self.total > self.limit:
-                raise SpendError(
-                    f"Spend ceiling exceeded: ${self.total:.2f} of "
-                    f"${self.limit:.2f}. Aborting run."
-                )
+            self._check_ceiling()
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:

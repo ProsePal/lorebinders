@@ -11,6 +11,7 @@ from lorebinders.agent.factory import (
     build_summarization_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,8 @@ async def _throttled_summarize(
         The generated summary text.
     """
     async with semaphore:
+        if deps.spend is not None:
+            await deps.spend.check()
         res = await _summarize_entity(
             entity.category,
             entity.name,
@@ -275,7 +278,13 @@ async def summarize_binder(
         entity, _ = tasks[i]
         if isinstance(res, BaseException):
             if isinstance(
-                res, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                res,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                    SpendError,
+                ),
             ):
                 raise res
             logger.error(f"Summarization failed for {entity.name}: {res}")

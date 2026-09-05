@@ -16,6 +16,7 @@ from lorebinders.agent.factory import (
     build_alias_resolution_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.models import (
     AgentDeps,
     AliasGroup,
@@ -146,6 +147,8 @@ async def _resolve_category_aliases(
     )
 
     async with semaphore:
+        if deps.spend is not None:
+            await deps.spend.check()
         resolution = await run_agent_async(
             agent, prompt, deps=deps, on_observe=on_observe
         )
@@ -192,6 +195,16 @@ async def resolve_aliases(
 
     for category, result in zip(categories, results, strict=True):
         if isinstance(result, BaseException):
+            if isinstance(
+                result,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                    SpendError,
+                ),
+            ):
+                raise result
             logger.error(
                 f"Alias resolution failed for {category.name}: {result}"
             )

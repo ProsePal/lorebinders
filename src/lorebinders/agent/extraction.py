@@ -11,6 +11,7 @@ from lorebinders.agent.factory import (
     build_extraction_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.storage.provider import StorageProvider
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,8 @@ async def _perform_extraction(
         A dictionary mapping categories to lists of extracted entities.
     """
     async with semaphore:
+        if deps.spend is not None:
+            await deps.spend.check()
         prompt = build_extraction_user_prompt(
             text=chapter.content,
             categories=categories,
@@ -188,7 +191,13 @@ async def extract_book(
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
-                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                r,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                    SpendError,
+                ),
             ):
                 raise r
             logger.error(f"Extraction task failed: {r}")

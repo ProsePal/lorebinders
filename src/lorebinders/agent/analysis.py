@@ -14,6 +14,7 @@ from lorebinders.agent.factory import (
     build_analysis_user_prompt,
     run_agent_async,
 )
+from lorebinders.agent.spend import SpendError
 from lorebinders.storage.provider import StorageProvider
 from lorebinders.types import SortedExtractions
 
@@ -301,6 +302,8 @@ async def _analyze_chapter_block(
         A list of analyzed entity profiles for the chapter.
     """
     async with semaphore:
+        if deps.spend is not None:
+            await deps.spend.check()
         return await _analyze_category_sequential(
             chapter,
             book_title,
@@ -359,6 +362,8 @@ async def _analyze_chapter_results_block(
     on_observe: _ObserveCb = None,
 ) -> list[models.AnalysisResult]:
     async with semaphore:
+        if deps.spend is not None:
+            await deps.spend.check()
         return await _analyze_category_results_sequential(
             chapter,
             cat_map,
@@ -473,7 +478,13 @@ async def analyze_entity_results(
     for result in task_results:
         if isinstance(result, BaseException):
             if isinstance(
-                result, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                result,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                    SpendError,
+                ),
             ):
                 raise result
             if raise_on_error:
@@ -555,7 +566,13 @@ async def analyze_entities(
     for r in results:
         if isinstance(r, BaseException):
             if isinstance(
-                r, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+                r,
+                (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    asyncio.CancelledError,
+                    SpendError,
+                ),
             ):
                 raise r
             logger.error(f"Analysis task failed: {r}")

@@ -136,6 +136,9 @@ async def run_agent_async(
     Returns:
         The output data from the agent run.
     """
+    if deps.spend is not None:
+        await deps.spend.check()
+
     if isinstance(agent.model, FallbackModel):
         model = agent.model.models[0].model_name
     else:
