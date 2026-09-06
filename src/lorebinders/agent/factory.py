@@ -1,18 +1,26 @@
 """Agent creation, prompt building, and run utilities."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelHTTPError
-from pydantic_ai.messages import ModelResponse
-from pydantic_ai.models import Model, infer_model
+from pydantic_ai.messages import ModelMessage, ModelResponse
+from pydantic_ai.models import (
+    Model,
+    ModelRequestParameters,
+    StreamedResponse,
+    infer_model,
+)
 from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.output import OutputDataT, OutputSpec
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.settings import ModelSettings, merge_model_settings
 from pydantic_ai.tools import AgentDepsT
+from pydantic_ai.usage import RequestUsage
 
 from lorebinders.agent_settings import provider_factory
 from lorebinders.models import (
@@ -33,6 +41,83 @@ if TYPE_CHECKING:
     from lorebinders.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+class ConfiguredModel(WrapperModel):
+    """Apply model-specific defaults without mutating the wrapped model."""
+
+    def __init__(self, wrapped: Model, settings: ModelSettings) -> None:
+        """Initialize the wrapper with model-specific default settings."""
+        super().__init__(wrapped)
+        self._configured_settings = cast(ModelSettings, dict(settings))
+
+    @property
+    def settings(self) -> ModelSettings:
+        """Return the wrapped and configured default settings."""
+        return cast(
+            ModelSettings,
+            merge_model_settings(
+                self.wrapped.settings, self._configured_settings
+            ),
+        )
+
+    def _merge_settings(
+        self, model_settings: ModelSettings | None
+    ) -> ModelSettings | None:
+        return merge_model_settings(self._configured_settings, model_settings)
+
+    def prepare_request(
+        self,
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> tuple[ModelSettings | None, ModelRequestParameters]:
+        """Prepare requests using this model's configured defaults."""
+        return self.wrapped.prepare_request(
+            self._merge_settings(model_settings), model_request_parameters
+        )
+
+    async def request(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> ModelResponse:
+        """Forward a request with this model's configured defaults."""
+        return await self.wrapped.request(
+            messages,
+            self._merge_settings(model_settings),
+            model_request_parameters,
+        )
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: RunContext[object] | None = None,
+    ) -> AsyncIterator[StreamedResponse]:
+        """Forward a streaming request with this model's configured defaults."""
+        async with self.wrapped.request_stream(
+            messages,
+            self._merge_settings(model_settings),
+            model_request_parameters,
+            run_context,
+        ) as response:
+            yield response
+
+    async def count_tokens(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> RequestUsage:
+        """Delegate token counting with this model's configured defaults."""
+        return await self.wrapped.count_tokens(
+            messages,
+            self._merge_settings(model_settings),
+            model_request_parameters,
+        )
 
 
 def load_prompt_from_assets(filename: str) -> str:
@@ -86,27 +171,15 @@ def create_agent(
     if isinstance(model, str):
         model = infer_model(model, provider_factory)
 
-    if isinstance(model, Model) and model_settings is not None:
-        existing_settings = model.settings
-        merged: ModelSettings = (
-            {**existing_settings, **model_settings}
-            if existing_settings
-            else cast(ModelSettings, dict(model_settings))
-        )
-        model._settings = merged
+    if model_settings is not None:
+        model = ConfiguredModel(model, model_settings)
 
     if fallback:
         if isinstance(fallback, str):
             fallback = infer_model(_ensure_prefix(fallback), provider_factory)
 
-        if isinstance(fallback, Model) and fallback_settings is not None:
-            existing_settings = fallback.settings
-            merged_fallback: ModelSettings = (
-                {**existing_settings, **fallback_settings}
-                if existing_settings
-                else cast(ModelSettings, dict(fallback_settings))
-            )
-            fallback._settings = merged_fallback
+        if fallback_settings is not None:
+            fallback = ConfiguredModel(fallback, fallback_settings)
 
         model = FallbackModel(model, fallback, fallback_on=_is_moderation_error)
 
