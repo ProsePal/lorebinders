@@ -20,6 +20,7 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.output import OutputDataT, OutputSpec
 from pydantic_ai.settings import ModelSettings, merge_model_settings
 from pydantic_ai.tools import AgentDepsT
+from pydantic_ai.usage import RequestUsage
 
 from lorebinders.agent_settings import provider_factory
 from lorebinders.models import (
@@ -52,8 +53,13 @@ class ConfiguredModel(WrapperModel):
 
     @property
     def settings(self) -> ModelSettings:
-        """Return this wrapper's configured default settings."""
-        return self._configured_settings
+        """Return the wrapped and configured default settings."""
+        return cast(
+            ModelSettings,
+            merge_model_settings(
+                self.wrapped.settings, self._configured_settings
+            ),
+        )
 
     def _merge_settings(
         self, model_settings: ModelSettings | None
@@ -99,6 +105,19 @@ class ConfiguredModel(WrapperModel):
             run_context,
         ) as response:
             yield response
+
+    async def count_tokens(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> RequestUsage:
+        """Delegate token counting with this model's configured defaults."""
+        return await self.wrapped.count_tokens(
+            messages,
+            self._merge_settings(model_settings),
+            model_request_parameters,
+        )
 
 
 def load_prompt_from_assets(filename: str) -> str:

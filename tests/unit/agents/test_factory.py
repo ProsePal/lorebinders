@@ -1,17 +1,26 @@
 import logging
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
-from pydantic_ai.messages import ModelRequest
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+)
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.output import PromptedOutput
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import RequestUsage
 
 from lorebinders.agent.factory import (
+    ConfiguredModel,
     _is_moderation_error,
     create_agent,
     create_extraction_agent,
@@ -91,11 +100,102 @@ def test_create_agent_accepts_model_without_settings_setter() -> None:
         model_settings={"timeout": 60.0},
     )
 
+    assert isinstance(agent.model, ConfiguredModel)
     configured_settings, _ = agent.model.prepare_request(
         None, ModelRequestParameters()
     )
 
     assert configured_settings == {"timeout": 60.0}
+
+
+@pytest.mark.anyio
+async def test_configured_model_request_merges_settings_sent_to_model() -> None:
+    """Removing settings merging from ConfiguredModel.request breaks this."""
+    received_settings: list[ModelSettings | None] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        received_settings.append(info.model_settings)
+        return ModelResponse(parts=[TextPart(content="complete")])
+
+    agent = create_agent(
+        FunctionModel(respond, settings={"temperature": 0.3}),
+        deps_type=AgentDeps,
+        output_type=str,
+        model_settings={"timeout": 60.0},
+        fallback=TestModel(),
+    )
+
+    result = await agent.run("test", model_settings={"max_tokens": 100})
+
+    assert result.output == "complete"
+    assert received_settings == [
+        {"temperature": 0.3, "timeout": 60.0, "max_tokens": 100}
+    ]
+
+
+@pytest.mark.anyio
+async def test_configured_model_stream_request_merges_settings() -> None:
+    """Removing settings merging from request_stream breaks this."""
+    received_settings: list[ModelSettings | None] = []
+
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        received_settings.append(info.model_settings)
+        yield "complete"
+
+    agent = create_agent(
+        FunctionModel(stream_function=respond, settings={"temperature": 0.3}),
+        deps_type=AgentDeps,
+        output_type=str,
+        model_settings={"timeout": 60.0},
+        fallback=TestModel(),
+    )
+
+    async with agent.run_stream(
+        "test", model_settings={"max_tokens": 100}
+    ) as result:
+        assert await result.get_output() == "complete"
+
+    assert received_settings == [
+        {"temperature": 0.3, "timeout": 60.0, "max_tokens": 100}
+    ]
+
+
+def test_configured_model_settings_merge_wrapped_and_configured_values() -> (
+    None
+):
+    """Configured defaults supplement advertised wrapped settings."""
+    model = ConfiguredModel(
+        TestModel(settings={"temperature": 0.3}), {"timeout": 60.0}
+    )
+
+    assert model.settings == {"temperature": 0.3, "timeout": 60.0}
+
+
+@pytest.mark.anyio
+async def test_configured_model_count_tokens_delegates_to_wrapped_model() -> (
+    None
+):
+    """ConfiguredModel preserves the wrapped model's token-counting support."""
+    received_settings: list[ModelSettings | None] = []
+
+    class CountingModel(TestModel):
+        async def count_tokens(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+        ) -> RequestUsage:
+            received_settings.append(model_settings)
+            return RequestUsage(input_tokens=7)
+
+    model = ConfiguredModel(CountingModel(), {"timeout": 60.0})
+
+    usage = await model.count_tokens([], None, ModelRequestParameters())
+
+    assert usage.input_tokens == 7
+    assert received_settings == [{"timeout": 60.0}]
 
 
 def test_create_extraction_agent_accepts_output_type_override() -> None:
