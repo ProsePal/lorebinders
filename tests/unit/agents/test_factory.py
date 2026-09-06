@@ -121,15 +121,17 @@ async def test_configured_model_request_merges_settings_sent_to_model() -> None:
         FunctionModel(respond, settings={"temperature": 0.3}),
         deps_type=AgentDeps,
         output_type=str,
-        model_settings={"timeout": 60.0},
+        model_settings={"temperature": 0.6, "timeout": 60.0},
         fallback=TestModel(),
     )
 
-    result = await agent.run("test", model_settings={"max_tokens": 100})
+    result = await agent.run(
+        "test", model_settings={"temperature": 0.9, "max_tokens": 100}
+    )
 
     assert result.output == "complete"
     assert received_settings == [
-        {"temperature": 0.3, "timeout": 60.0, "max_tokens": 100}
+        {"temperature": 0.9, "timeout": 60.0, "max_tokens": 100}
     ]
 
 
@@ -165,12 +167,13 @@ async def test_configured_model_stream_request_merges_settings() -> None:
 def test_configured_model_settings_merge_wrapped_and_configured_values() -> (
     None
 ):
-    """Configured defaults supplement advertised wrapped settings."""
+    """Configured defaults override advertised wrapped settings."""
     model = ConfiguredModel(
-        TestModel(settings={"temperature": 0.3}), {"timeout": 60.0}
+        TestModel(settings={"temperature": 0.3}),
+        {"temperature": 0.6, "timeout": 60.0},
     )
 
-    assert model.settings == {"temperature": 0.3, "timeout": 60.0}
+    assert model.settings == {"temperature": 0.6, "timeout": 60.0}
 
 
 @pytest.mark.anyio
