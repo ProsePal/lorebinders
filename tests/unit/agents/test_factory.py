@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelRequest
+from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
@@ -63,6 +64,38 @@ def test_create_agent_with_fallback_wraps_in_fallback_model() -> None:
         fallback=fallback,
     )
     assert isinstance(agent.model, FallbackModel)
+
+
+def test_create_agent_accepts_model_without_settings_setter() -> None:
+    """Configured agents support models without a mutable settings field."""
+
+    class ImmutableSettingsModel(TestModel):
+        def __init__(self) -> None:
+            self._settings_mutable = True
+            super().__init__()
+            self._settings_mutable = False
+
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "_settings" and not getattr(
+                self, "_settings_mutable", True
+            ):
+                raise AttributeError(
+                    "settings are immutable after construction"
+                )
+            super().__setattr__(name, value)
+
+    agent = create_agent(
+        ImmutableSettingsModel(),
+        deps_type=AgentDeps,
+        output_type=ExtractionResult,
+        model_settings={"timeout": 60.0},
+    )
+
+    configured_settings, _ = agent.model.prepare_request(
+        None, ModelRequestParameters()
+    )
+
+    assert configured_settings == {"timeout": 60.0}
 
 
 def test_create_extraction_agent_accepts_output_type_override() -> None:
