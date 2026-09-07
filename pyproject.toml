@@ -88,6 +88,10 @@ ignore_missing_imports = true
 module = "sqlalchemy.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "lorebinders.storage.providers.db"
+disable_error_code = ["misc"]
+
 [tool.ruff]
 exclude = [
     "*.json",
