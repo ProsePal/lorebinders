@@ -84,6 +84,10 @@ disable_error_code = ["call-arg", "arg-type"]
 module = "ebook2text.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "sqlalchemy.*"
+ignore_missing_imports = true
+
 [tool.ruff]
 exclude = [
     "*.json",
