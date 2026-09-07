@@ -1,6 +1,6 @@
 [project]
 name = "lorebinders"
-version = "0.3.3"
+version = "0.3.4"
 description = "Create a story bible with AI from a finished manuscript"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -74,7 +74,6 @@ python_version = "3.11"
 strict = true
 plugins = [
     "pydantic.mypy",
-    "sqlalchemy.ext.mypy.plugin"
 ]
 
 [[tool.mypy.overrides]]
@@ -84,6 +83,14 @@ disable_error_code = ["call-arg", "arg-type"]
 [[tool.mypy.overrides]]
 module = "ebook2text.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sqlalchemy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "lorebinders.storage.providers.db"
+disable_error_code = ["misc"]
 
 [tool.ruff]
 exclude = [
