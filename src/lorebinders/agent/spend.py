@@ -60,6 +60,6 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     else:
         cost_per_m_in = 1.0
         cost_per_m_out = 3.0
-
-    total_cents = input_tokens * cost_per_m_in + output_tokens * cost_per_m_out
-    return total_cents / 1_000_000
+    return (
+        input_tokens * cost_per_m_in + output_tokens * cost_per_m_out
+    ) / 1_000_000
