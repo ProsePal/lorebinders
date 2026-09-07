@@ -74,7 +74,6 @@ python_version = "3.11"
 strict = true
 plugins = [
     "pydantic.mypy",
-    "sqlalchemy.ext.mypy.plugin"
 ]
 
 [[tool.mypy.overrides]]
