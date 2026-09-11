@@ -3,8 +3,8 @@ revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "(python_full_version < '3.14' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 
@@ -2396,15 +2396,15 @@ wheels = [
 
 [[package]]
 name = "reportlab"
-version = "4.4.7"
+version = "5.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "charset-normalizer" },
     { name = "pillow" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/a7/4600cb1cfc975a06552e8927844ddcb8fd90217e9a6068f5c7aa76c3f221/reportlab-4.4.7.tar.gz", hash = "sha256:41e8287af965e5996764933f3e75e7f363c3b6f252ba172f9429e81658d7b170", size = 3714000, upload-time = "2025-12-21T11:50:11.336Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/51/dbe28534ae12c852f61be91f039f343305fd1f34f1c66b8de75afae7a525/reportlab-5.0.1.tar.gz", hash = "sha256:ebd13154be1c8515e665de70bd2d303ae9ddc3ef47e44afd5116441ca0283a26", size = 3945711, upload-time = "2026-08-20T13:48:16.461Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/bf/a29507386366ab17306b187ad247dd78e4599be9032cb5f44c940f547fc0/reportlab-4.4.7-py3-none-any.whl", hash = "sha256:8fa05cbf468e0e76745caf2029a4770276edb3c8e86a0b71e0398926baf50673", size = 1954263, upload-time = "2025-12-21T11:50:08.93Z" },
+    { url = "https://files.pythonhosted.org/packages/db/cb/dacbc268cb68d0428ea2cbd85266195a9ab3e677449589ddae59bd7542ac/reportlab-5.0.1-py3-none-any.whl", hash = "sha256:1c36e6bb0e71780c72331eba60da7f602e8d4389a8723825af71342e49d791e8", size = 1957258, upload-time = "2026-08-20T13:48:14.026Z" },
 ]
 
 [[package]]
