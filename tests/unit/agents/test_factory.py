@@ -579,7 +579,7 @@ async def test_run_agent_async_no_all_messages_attribute_logs_warning(
 
     mock_res = MagicMock(spec=["output", "usage"])
     mock_res.output = ExtractionResult(results=[])
-    mock_res.usage.return_value = MagicMock(input_tokens=10, output_tokens=5)
+    mock_res.usage = MagicMock(input_tokens=10, output_tokens=5)
 
     async def mock_run(*args: Any, **kwargs: Any) -> Any:
         return mock_res
@@ -596,3 +596,11 @@ async def test_run_agent_async_no_all_messages_attribute_logs_warning(
     ]
     assert len(completed_events) == 1
     assert completed_events[0].metadata.get("model") == "primary-test-model"
+
+    metric_events = [
+        o for o in observations if o.type == ObservationType.METRIC
+    ]
+    assert len(metric_events) == 1
+    assert metric_events[0].metadata.get("input_tokens") == 10
+    assert metric_events[0].metadata.get("output_tokens") == 5
+    assert metric_events[0].metadata.get("total_tokens") == 15

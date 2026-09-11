@@ -240,8 +240,11 @@ async def run_agent_async(
         )
         import copy
 
-        safe_settings = (
-            copy.deepcopy(agent.model_settings) if agent.model_settings else {}
+        base_settings = agent.model_settings
+        safe_settings: ModelSettings = (
+            copy.deepcopy(base_settings)
+            if base_settings and not callable(base_settings)
+            else {}
         )
         if model_settings:
             safe_settings.update(copy.deepcopy(model_settings))
@@ -286,7 +289,7 @@ async def run_agent_async(
 
             cost: float | None = None
             try:
-                usage = res.usage()
+                usage = res.usage
                 emit_observation(
                     on_observe,
                     ObservationType.METRIC,
