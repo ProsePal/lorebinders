@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Ecosystem "uv" (not "pip") so a dependency bump PR also refreshes
+  # uv.lock in the same commit, matching the fix applied in the ProsePal
+  # monorepo's .github/dependabot.yml after PR #140 broke main there.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      uv-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
