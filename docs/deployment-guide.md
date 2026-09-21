@@ -46,7 +46,7 @@ from lorebinders.app import build_binder
 binder = build_binder(
     book_path="path/to/manuscript.epub",
     author="John Doe",
-    title="My Great Story"
+    title="My Great Story",
 )
 print(f"Binder for {binder.title} by {binder.author} generated.")
 ```
