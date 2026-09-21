@@ -68,7 +68,11 @@ requires = ["uv_build>=0.9.18,<0.11.0"]
 build-backend = "uv_build"
 
 [tool.pyrefly]
-project-includes = ["src/lorebinders/**/*.py"]
+project-includes = [
+    "src/lorebinders/**/*.py",
+    "tests/**/*.py",
+]
+search-path = [".", "src"]
 python-version = "3.11.0"
 preset = "legacy"
 ignore-missing-imports = [
@@ -88,11 +92,13 @@ implicit-any-parameter = "error"
 implicit-any-empty-container = "ignore"
 
 [[tool.pyrefly.sub-config]]
-matches = "tests/unit/test_models"
+matches = "tests/**"
 
 [tool.pyrefly.sub-config.errors]
+no-matching-overload = "ignore"
 bad-argument-count = "ignore"
 bad-argument-type = "ignore"
+missing-argument = "ignore"
 
 [tool.ruff]
 exclude = [
