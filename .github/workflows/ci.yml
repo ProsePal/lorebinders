@@ -26,7 +26,7 @@ jobs:
       - run: uv sync --all-groups --all-extras --locked
       - run: uv run --locked ruff check .
       - run: uv run --locked ruff format --check .
-      - run: uv run --locked mypy src/ tests/
+      - run: uv run --locked pyrefly check
 
   test:
     runs-on: ubuntu-latest

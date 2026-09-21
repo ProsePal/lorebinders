@@ -7,7 +7,7 @@ LoreBinders follows strict coding standards to ensure code quality, maintainabil
 We use the following tools for linting, formatting, and type checking:
 
 - **Ruff**: Fast Python linter and formatter.
-- **MyPy**: Static type checker for Python.
+- **Pyrefly**: Fast static type checker for Python.
 - **Pre-commit**: Automated checks before every commit.
 - **Pytest**: For unit, integration, and end-to-end testing.
 
@@ -35,11 +35,11 @@ We enable a broad set of Ruff rules, including:
 - `N`: PEP8-naming
 - `UP`: Pyupgrade (modern Python syntax)
 
-## ✅ Type Checking (MyPy)
+## ✅ Type Checking (Pyrefly)
 
 - All code must be typed.
 - We target strict typing where possible.
-- MyPy configuration is located in `pyproject.toml`.
+- Pyrefly configuration is located in `pyproject.toml`.
 
 ## 🧪 Testing Standards
 
@@ -60,6 +60,6 @@ We enable a broad set of Ruff rules, including:
 
 Before committing code:
 1. Run `ruff check --fix .` and `ruff format .`.
-2. Run `mypy .`.
+2. Run `pyrefly check`.
 3. Run `pytest`.
 4. Ensure pre-commit hooks pass.
