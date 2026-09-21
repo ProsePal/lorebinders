@@ -52,8 +52,13 @@ repos:
         additional_dependencies:
           - ebook2text
           - pydantic
-          - pydantic-settings
           - pydantic-ai
+          - pydantic-settings
+          - pypdf
           - pytest
+          - python-dotenv
+          - reportlab
+          - rich
           - sqlalchemy
           - typer
+          - types-reportlab
