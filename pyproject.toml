@@ -53,7 +53,7 @@ db = [
 [dependency-groups]
 dev = ["pre-commit>=4.2.0", { include-group = "testing" }, { include-group = "lint" }]
 lint = [
-    "mypy>=1.19.0",
+    "pyrefly>=1.3.1",
     "ruff>=0.14.0",
     "types-reportlab>=1.2.0"
 ]
@@ -67,30 +67,32 @@ testing = [
 requires = ["uv_build>=0.9.18,<0.11.0"]
 build-backend = "uv_build"
 
-[tool.mypy]
-disable_error_code = ["attr-defined"]
-files = ["src/lorebinders/**/*.py"]
-python_version = "3.11"
-strict = true
-plugins = [
-    "pydantic.mypy",
+[tool.pyrefly]
+project-includes = ["src/lorebinders/**/*.py"]
+python-version = "3.11.0"
+preset = "legacy"
+ignore-missing-imports = [
+    "ebook2text.*",
+    "sqlalchemy.*",
 ]
+check-unannotated-defs = true
+infer-return-types = "never"
 
-[[tool.mypy.overrides]]
-module = "tests.unit.test_models"
-disable_error_code = ["call-arg", "arg-type"]
+[tool.pyrefly.errors]
+unannotated-return = "error"
+missing-attribute = "ignore"
+implicit-any = "error"
+redundant-cast = "warn"
+no-any-return = "error"
+implicit-any-parameter = "error"
+implicit-any-empty-container = "ignore"
 
-[[tool.mypy.overrides]]
-module = "ebook2text.*"
-ignore_missing_imports = true
+[[tool.pyrefly.sub-config]]
+matches = "tests/unit/test_models"
 
-[[tool.mypy.overrides]]
-module = "sqlalchemy.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "lorebinders.storage.providers.db"
-disable_error_code = ["misc"]
+[tool.pyrefly.sub-config.errors]
+bad-argument-count = "ignore"
+bad-argument-type = "ignore"
 
 [tool.ruff]
 exclude = [

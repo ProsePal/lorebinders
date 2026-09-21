@@ -239,7 +239,8 @@ class FilesystemStorage:
         Returns:
             A tuple of (cached_names, missing_names).
         """
-        cached, missing = [], []
+        cached: list[str] = []
+        missing: list[str] = []
         for n in names:
             if self.profile_exists(chapter_num, category, n, book_title):
                 cached.append(n)
