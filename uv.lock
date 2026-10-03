@@ -1175,7 +1175,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "reportlab", specifier = ">=4.4.7" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15" },
-    { name = "sqlalchemy", marker = "extra == 'db'", specifier = ">=2.0.47" },
+    { name = "sqlalchemy", marker = "extra == 'db'", specifier = ">=2.0.47,<2.1" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.27" },
     { name = "typing-extensions", specifier = ">=4.15.0" },
 ]
