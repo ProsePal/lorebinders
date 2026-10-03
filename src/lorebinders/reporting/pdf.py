@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from pathlib import Path
+from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import StyleSheet1
@@ -22,6 +23,24 @@ from lorebinders.models import (
 from lorebinders.reporting.styles import get_document_styles
 
 
+def _esc(text: object) -> str:
+    """Escape user-supplied text for safe use inside ReportLab Paragraph markup.
+
+    ReportLab's Paragraph renderer parses XML-like markup, so unescaped
+    user content can inject tags (e.g. ``<img>``, ``<onDraw>``) that trigger
+    local file reads or network fetches. This wrapper applies standard XML
+    entity escaping before any user-controlled value is embedded in markup.
+
+    Args:
+        text: The raw user-supplied value to escape. Non-string values are
+            coerced to ``str`` before escaping.
+
+    Returns:
+        The escaped string, safe for interpolation inside a Paragraph.
+    """
+    return _xml_escape(str(text))
+
+
 def _create_occurrence_item(
     location_key: str, val: str | list[str], styles: StyleSheet1
 ) -> Paragraph:
@@ -31,7 +50,7 @@ def _create_occurrence_item(
         A Paragraph representing the trait occurrence.
     """
     val_str = ", ".join(val) if isinstance(val, list) else str(val)
-    text = f"{location_key}: {val_str}"
+    text = f"{_esc(location_key)}: {_esc(val_str)}"
     return Paragraph(text, styles["Normal"])
 
 
@@ -42,7 +61,7 @@ def _add_trait_section(
     styles: StyleSheet1,
 ) -> None:
     """Add a single trait and its occurrences to the report."""
-    story.append(Paragraph(f"<b>{trait_name}</b>", styles["Normal"]))
+    story.append(Paragraph(f"<b>{_esc(trait_name)}</b>", styles["Normal"]))
     list_items: list[Paragraph] = [
         _create_occurrence_item(k, occurrences[k], styles)
         for k in sorted(occurrences.keys(), key=str)
@@ -104,10 +123,10 @@ def _process_entity(
     styles: StyleSheet1,
 ) -> None:
     """Process a single entity and add it to the story."""
-    story.append(Paragraph(entity.name, styles["Heading2"]))
+    story.append(Paragraph(_esc(entity.name), styles["Heading2"]))
 
     if entity.summary:
-        story.append(Paragraph(entity.summary, styles["Normal"]))
+        story.append(Paragraph(_esc(entity.summary), styles["Normal"]))
     elif entity.appearances:
         story.append(
             Paragraph("<i>Error during summarization.</i>", styles["Normal"])
@@ -137,7 +156,7 @@ def _process_category(
 ) -> None:
     """Helper to process all entities in a category."""
     cat = data.categories[category]
-    story.append(Paragraph(cat.name, styles["Heading1"]))
+    story.append(Paragraph(_esc(cat.name), styles["Heading1"]))
     story.append(Spacer(1, 12))
 
     for entity_name in sorted(cat.entities.keys()):
@@ -173,8 +192,9 @@ def generate_pdf_report(data: Binder, output_path: Path) -> None:
             }
             unit = unit_map.get(stage, "tasks")
             msg = (
-                f"{stage.capitalize()} stage: "
-                f"{stats['failed_count']}/{stats['total_count']} {unit} failed."
+                f"{_esc(stage.capitalize())} stage: "
+                f"{stats['failed_count']}/{stats['total_count']}"
+                f" {_esc(unit)} failed."
             )
             story.append(Paragraph(f"<i>{msg}</i>", styles["Normal"]))
         story.append(Spacer(1, 12))
