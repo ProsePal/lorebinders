@@ -85,10 +85,6 @@ def test_generate_pdf_report_with_stage_failures(tmp_path: Path) -> None:
     assert "Analysis stage: 5/50 chapter blocks failed." in text
 
 
-# ---------------------------------------------------------------------------
-# Markup escaping — user-controlled strings must not be interpreted as tags
-# ---------------------------------------------------------------------------
-
 MARKUP_PAYLOADS = [
     '<img src="file:///etc/passwd"/>',
     '<onDraw name="exploit"/>',
@@ -103,12 +99,15 @@ MARKUP_PAYLOADS = [
 
 
 def test_esc_escapes_xml_special_characters() -> None:
-    """_esc must convert <, >, &, and " to XML entities."""
+    """_esc must convert <, >, and & to XML entities.
+
+    xml.sax.saxutils.escape does not escape double-quotes by default;
+    quotes are only significant inside attribute values, which Paragraph
+    markup never uses, so the default behaviour is correct here.
+    """
     assert _esc("<") == "&lt;"
     assert _esc(">") == "&gt;"
     assert _esc("&") == "&amp;"
-    # xml.sax.saxutils.escape does not escape quotes by default;
-    # quotes are only special inside attribute values, which we never use.
     assert "&lt;" in _esc('<img src="file:///etc/passwd"/>')
     assert "&amp;" in _esc("Tom & Jerry")
 
@@ -127,8 +126,11 @@ def test_esc_coerces_non_strings() -> None:
 
 
 def test_pdf_markup_injection_entity_name(tmp_path: Path) -> None:
-    """Entity names containing markup payloads must not crash PDF generation
-    and must appear as literal text in the output, not as rendered tags."""
+    """Entity names with markup payloads must render as literal text.
+
+    Generation must succeed and representative tag-text must appear
+    verbatim in the PDF text layer, not be interpreted or silently dropped.
+    """
     output_path = tmp_path / "inject_name.pdf"
     binder = Binder()
     for payload in MARKUP_PAYLOADS:
@@ -140,21 +142,25 @@ def test_pdf_markup_injection_entity_name(tmp_path: Path) -> None:
             {"trait": "value"},
         )
 
-    # Must not raise
     generate_pdf_report(binder, output_path)
     assert output_path.exists()
 
     reader = PdfReader(output_path)
     text = "".join(page.extract_text() for page in reader.pages)
 
-    # The PDF text layer must contain the unescaped literal characters,
-    # not silently drop or mangle them.
     assert "Tom & Jerry" in text
     assert "a < b > c" in text
+    assert "img" in text
+    assert "onDraw" in text
+    assert "bold injection" in text
 
 
 def test_pdf_markup_injection_summary(tmp_path: Path) -> None:
-    """Entity summaries with markup payloads must not crash PDF generation."""
+    """Entity summaries with markup payloads must render as literal text.
+
+    Generation must succeed and tag-text from the payload must appear
+    verbatim in the PDF text layer, not be interpreted or silently dropped.
+    """
     output_path = tmp_path / "inject_summary.pdf"
     binder = Binder()
     binder.add_appearance("Characters", "Hero", 1, "Book", {"trait": "value"})
@@ -168,17 +174,22 @@ def test_pdf_markup_injection_summary(tmp_path: Path) -> None:
     reader = PdfReader(output_path)
     text = "".join(page.extract_text() for page in reader.pages)
     assert "The hero is strong." in text
+    assert "img" in text
 
 
 def test_pdf_markup_injection_trait_name(tmp_path: Path) -> None:
-    """Trait names containing markup payloads must not crash PDF generation."""
+    """Trait names with markup payloads must render as literal text.
+
+    Generation must succeed and representative tag-text must appear
+    verbatim in the PDF text layer, not be interpreted or silently dropped.
+    """
     output_path = tmp_path / "inject_trait.pdf"
     binder = Binder()
-    for payload in MARKUP_PAYLOADS:
+    for i, payload in enumerate(MARKUP_PAYLOADS, start=1):
         binder.add_appearance(
             "Characters",
             "Hero",
-            1,
+            i,
             "Book",
             {payload: "some value"},
         )
@@ -186,16 +197,27 @@ def test_pdf_markup_injection_trait_name(tmp_path: Path) -> None:
     generate_pdf_report(binder, output_path)
     assert output_path.exists()
 
+    reader = PdfReader(output_path)
+    text = "".join(page.extract_text() for page in reader.pages)
+
+    assert "Tom & Jerry" in text
+    assert "img" in text
+    assert "onDraw" in text
+
 
 def test_pdf_markup_injection_trait_value(tmp_path: Path) -> None:
-    """Trait values containing markup payloads must not crash PDF generation."""
+    """Trait values with markup payloads must render as literal text.
+
+    Generation must succeed and representative tag-text must appear
+    verbatim in the PDF text layer, not be interpreted or silently dropped.
+    """
     output_path = tmp_path / "inject_value.pdf"
     binder = Binder()
-    for payload in MARKUP_PAYLOADS:
+    for i, payload in enumerate(MARKUP_PAYLOADS, start=1):
         binder.add_appearance(
             "Characters",
             "Hero",
-            1,
+            i,
             "Book",
             {"Physique": payload},
         )
@@ -203,9 +225,20 @@ def test_pdf_markup_injection_trait_value(tmp_path: Path) -> None:
     generate_pdf_report(binder, output_path)
     assert output_path.exists()
 
+    reader = PdfReader(output_path)
+    text = "".join(page.extract_text() for page in reader.pages)
+
+    assert "Tom & Jerry" in text
+    assert "img" in text
+    assert "onDraw" in text
+
 
 def test_pdf_markup_injection_category_name(tmp_path: Path) -> None:
-    """Category names with markup payloads must not crash PDF generation."""
+    """Category names with markup payloads must render as literal text.
+
+    Generation must succeed and representative tag-text must appear
+    verbatim in the PDF text layer, not be interpreted or silently dropped.
+    """
     output_path = tmp_path / "inject_category.pdf"
     binder = Binder()
     for payload in MARKUP_PAYLOADS:
@@ -219,3 +252,10 @@ def test_pdf_markup_injection_category_name(tmp_path: Path) -> None:
 
     generate_pdf_report(binder, output_path)
     assert output_path.exists()
+
+    reader = PdfReader(output_path)
+    text = "".join(page.extract_text() for page in reader.pages)
+
+    assert "Tom & Jerry" in text
+    assert "img" in text
+    assert "onDraw" in text

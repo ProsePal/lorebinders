@@ -23,7 +23,7 @@ from lorebinders.models import (
 from lorebinders.reporting.styles import get_document_styles
 
 
-def _esc(text: str) -> str:
+def _esc(text: object) -> str:
     """Escape user-supplied text for safe use inside ReportLab Paragraph markup.
 
     ReportLab's Paragraph renderer parses XML-like markup, so unescaped
@@ -32,7 +32,8 @@ def _esc(text: str) -> str:
     entity escaping before any user-controlled value is embedded in markup.
 
     Args:
-        text: The raw user-supplied string to escape.
+        text: The raw user-supplied value to escape. Non-string values are
+            coerced to ``str`` before escaping.
 
     Returns:
         The escaped string, safe for interpolation inside a Paragraph.
