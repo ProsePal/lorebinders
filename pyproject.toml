@@ -4,80 +4,98 @@ version = "0.3.4"
 description = "Create a story bible with AI from a finished manuscript"
 requires-python = ">=3.11"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = { text = "Apache-2.0" }
 authors = [{ name = "Ashlynn Antrobus", email = "ashlynn@prosepal.io" }]
 keywords = ["AI", "fiction", "manuscript", "story bible", "writing"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Other Audience",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Programming Language :: Python",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Text Processing",
-    "Typing :: Typed",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Other Audience",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Text Processing",
+  "Typing :: Typed",
 ]
 
 dependencies = [
-    "ebook2text>=2.3.1",
-    "pydantic>=2.12.5",
-    "pydantic-ai[groq,openrouter]>=2.40,<3",
-    "pydantic-settings>=2.12.0",
-    "python-dotenv>=1.2.1",
-    "reportlab>=4.4.7",
-    "typing-extensions>=4.15.0",
+  "ebook2text>=2.3.1",
+  "pydantic>=2.12.5",
+  "pydantic-ai[groq,openrouter]>=2.54,<3",
+  "pydantic-settings>=2.12.0",
+  "python-dotenv>=1.2.1",
+  "reportlab>=4.4.7",
+  "typing-extensions>=4.15.0",
 ]
+
+[project.urls]
+"Homepage" = "https://prosepal.io"
 
 [project.scripts]
 lorebinders = "lorebinders.app:run"
 lorebinders-cli = "lorebinders.cli:cli"
 
-[project.urls]
-"Homepage" = "https://prosepal.io"
-
 [project.optional-dependencies]
 cli = [
-    "rich>=15",
-    "typer>=0.27",
+  "rich>=15",
+  "typer>=0.27",
 ]
 db = [
-    "sqlalchemy>=2.0.47,<2.1",
+  "sqlalchemy>=2.0.47,<2.1",
 ]
 
 [dependency-groups]
-dev = ["pre-commit>=4.2.0", { include-group = "testing" }, { include-group = "lint" }]
-lint = [
-    "pyrefly>=1.3.1",
-    "ruff>=0.14.0",
-    "types-reportlab>=1.2.0"
+dev = [
+  "pre-commit>=4.2.0",
+  { include-group = "lint" },
+  { include-group = "testing" }
 ]
+lint = ["pyrefly>=1.3.1", "ruff>=0.14.0", "types-reportlab>=1.2.0"]
 testing = [
-    "pypdf>=6.6.0",
-    "pytest-cov>=7.0.0",
-    "pytest>=9.0.0",
+  "pypdf>=6.6.0",
+  "pytest>=9.0.0",
+  "pytest-cov>=7.0.0",
 ]
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.coverage.run]
+omit = ["types.py", "logging.py", "reporting/styles.py"]
+
+[tool.coverage.report]
+exclude_also = [
+  "@(abc\\.)?abstractmethod",
+  "__all__",
+  "class .*\\bProtocol\\):",
+  "def __repr__",
+  "if 0:",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "if self.debug:",
+  "if settings.DEBUG",
+  "raise AssertionError",
+  "raise NotImplementedError",
+]
+
 [tool.pyrefly]
 project-includes = [
-    "src/lorebinders/**/*.py",
-    "tests/**/*.py",
+  "src/lorebinders/**/*.py",
+  "tests/**/*.py",
 ]
 search-path = [".", "src"]
 python-version = "3.11.0"
 preset = "legacy"
 ignore-missing-imports = [
-    "ebook2text.*",
-    "sqlalchemy.*",
+  "ebook2text.*",
+  "sqlalchemy.*",
 ]
 check-unannotated-defs = true
 infer-return-types = "never"
@@ -100,16 +118,27 @@ bad-argument-count = "ignore"
 bad-argument-type = "ignore"
 missing-argument = "ignore"
 
+[tool.pytest]
+addopts = [
+  "--cov=lorebinders",
+  "--cov-report=json",
+  "--cov-fail-under=80",
+  "-rf"
+]
+markers = ["external: mark a test as requiring external an external dependency"]
+pythonpath = [".", "src"]
+testpaths = ["tests"]
+
 [tool.ruff]
 exclude = [
-    "*.json",
-    "*cache",
-    "*cov",
-    ".git",
-    ".venv",
-    ".vscode",
-    "__pycache__",
-    "work",
+  "*.json",
+  "*cache",
+  "*cov",
+  ".git",
+  ".venv",
+  ".vscode",
+  "__pycache__",
+  "work",
 ]
 force-exclude = true
 line-length = 80
@@ -127,13 +156,13 @@ select = ["A", "ANN", "D", "DOC", "E", "F", "I", "N", "UP"]
 "tests/**.py" = ["ANN", "D", "DOC"]
 
 [tool.ruff.lint.isort]
-#:reorderArrays false
+# :reorderArrays false
 section-order = [
-    "future",
-    "standard-library",
-    "third-party",
-    "first-party",
-    "local-folder",
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "local-folder",
 ]
 
 [tool.ruff.lint.flake8-annotations]
@@ -142,27 +171,3 @@ mypy-init-return = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.pytest]
-addopts = ["--cov=lorebinders", "--cov-report=json", "--cov-fail-under=80", "-rf"]
-pythonpath = ["src", "."]
-testpaths = ["tests"]
-markers = ["external: mark a test as requiring external an external dependency"]
-
-[tool.coverage.run]
-omit = ["types.py", "logging.py", "reporting/styles.py"]
-
-[tool.coverage.report]
-exclude_also = [
-    "@(abc\\.)?abstractmethod",
-    "__all__",
-    "class .*\\bProtocol\\):",
-    "def __repr__",
-    "if 0:",
-    "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-]
