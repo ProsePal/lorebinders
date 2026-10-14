@@ -498,8 +498,8 @@ async def test_run_agent_async_fallback_serves_request_updates_model_and_spend(
         in_tokens,
         out_tokens,
     )
-    assert spend.total == generic_cost
-    assert spend.total >= expected_cost
+    assert spend.total == expected_cost
+    assert spend.total < generic_cost
 
 
 @pytest.mark.anyio

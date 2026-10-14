@@ -1,42 +1,8 @@
 import asyncio
-from copy import copy
-
-from pydantic_ai.usage import RequestUsage, RunUsage
 
 
 class SpendError(RuntimeError):
     """Raised when spend ceiling is exceeded."""
-
-
-class SpendUsage(RunUsage):
-    """Account for each response, estimating costs missing from usage."""
-
-    def __init__(self, models: tuple[str, ...]) -> None:
-        """Track usage across retries and the configured fallback models."""
-        super().__init__()
-        self._models = models
-
-    def incr(self, incr_usage: RunUsage | RequestUsage) -> None:
-        """Preserve known prices and estimate unpriced response tokens."""
-        if incr_usage.cost is None and (
-            incr_usage.input_tokens or incr_usage.output_tokens
-        ):
-            from decimal import Decimal
-
-            incr_usage = copy(incr_usage)
-            incr_usage.cost = Decimal(
-                str(
-                    max(
-                        estimate_cost(
-                            model,
-                            incr_usage.input_tokens,
-                            incr_usage.output_tokens,
-                        )
-                        for model in self._models
-                    )
-                )
-            )
-        super().incr(incr_usage)
 
 
 class Spend:
@@ -74,6 +40,52 @@ class Spend:
             if actual_cost is not None:
                 self.total += actual_cost
                 self._check_ceiling()
+
+
+class RequestBudget:
+    """Reserve and reconcile each request against a shared pipeline budget."""
+
+    def __init__(self, spend: Spend | None, reservation: float) -> None:
+        """Adopt the reservation made before entering the agent run."""
+        self.spend = spend
+        self.reservation = reservation
+        self.active = spend is not None
+
+    async def reserve_request(
+        self, model: str, input_tokens: int, output_tokens: int
+    ) -> None:
+        """Check the budget before each primary, retry, or fallback call."""
+        if self.spend is None:
+            return
+        estimate = estimate_cost(model, input_tokens, output_tokens)
+        additional = max(0.0, estimate - self.reservation)
+        if not self.active:
+            additional = estimate
+        await self.spend.reserve(additional)
+        self.reservation += additional
+        self.active = True
+
+    async def release(self, cost: float | None = None) -> None:
+        """Finish accounting even if cancellation arrives while locking."""
+        if self.spend is None or not self.active:
+            return
+        task = asyncio.create_task(
+            self.spend.release(self.reservation, actual_cost=cost)
+        )
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception:
+                break
+        self.active = False
+        self.reservation = 0.0
+        if cancelled:
+            task.exception()
+            raise asyncio.CancelledError
+        task.result()
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:

@@ -73,7 +73,11 @@ async def _perform_extraction(
             narrator=config.narrator_config,
         )
         raw = await run_agent_async(
-            agent, prompt, deps=deps, on_observe=on_observe
+            agent,
+            prompt,
+            deps=deps,
+            on_observe=on_observe,
+            max_output_tokens=deps.settings.extraction_max_output_tokens,
         )
         return raw.to_dict()
 
