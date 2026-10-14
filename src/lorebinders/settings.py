@@ -65,7 +65,9 @@ class Settings(BaseSettings):
             "isolated failures."
         ),
     )
-    spend_ceiling: float | None = None
+    spend_ceiling: float | None = Field(2.5, gt=0, allow_inf_nan=False)
+    max_output_tokens: int = Field(20000, ge=1)
+    extraction_max_output_tokens: int = Field(4000, ge=1)
 
     workspace_base_path: Path = Path(__file__).parent / "work"
     db_url: str = "sqlite:///:memory:"
@@ -92,10 +94,18 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.8
     max_concurrency: int = 10
 
-    def model_settings_for(self, model: str) -> ModelSettings:
+    def model_settings_for(
+        self, model: str, *, max_output_tokens: int | None = None
+    ) -> ModelSettings:
         """Set reasoning level for a given model."""
         model_provider = model.split(":")[0] if ":" in model else "openrouter"
-        return get_model_settings(model_provider)
+        model_settings = get_model_settings(model_provider)
+        model_settings["max_tokens"] = (
+            self.max_output_tokens
+            if max_output_tokens is None
+            else max_output_tokens
+        )
+        return model_settings
 
 
 @cache

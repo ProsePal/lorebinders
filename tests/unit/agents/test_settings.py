@@ -1,6 +1,38 @@
 import pytest
+from pydantic import ValidationError
 
 from lorebinders.agent_settings import get_model_settings as settings_config
+from lorebinders.settings import Settings
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("spend_ceiling", 0),
+        ("spend_ceiling", -1),
+        ("spend_ceiling", float("inf")),
+        ("max_output_tokens", 0),
+        ("extraction_max_output_tokens", -1),
+    ],
+)
+def test_cost_controls_reject_invalid_limits(field: str, value: float) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**{field: value})
+
+
+def test_cost_controls_load_environment_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOREBINDERS_SPEND_CEILING", "1.75")
+    monkeypatch.setenv("LOREBINDERS_MAX_OUTPUT_TOKENS", "18000")
+    monkeypatch.setenv("LOREBINDERS_EXTRACTION_MAX_OUTPUT_TOKENS", "3000")
+    settings = Settings()
+    assert settings.spend_ceiling == 1.75
+    assert (
+        settings.model_settings_for("openrouter:z-ai/glm-4.5")["max_tokens"]
+        == 18000
+    )
+    assert settings.extraction_max_output_tokens == 3000
 
 
 def test_settings_config_openai() -> None:

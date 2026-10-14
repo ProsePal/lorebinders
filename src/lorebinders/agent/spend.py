@@ -1,8 +1,42 @@
 import asyncio
+from copy import copy
+
+from pydantic_ai.usage import RequestUsage, RunUsage
 
 
 class SpendError(RuntimeError):
     """Raised when spend ceiling is exceeded."""
+
+
+class SpendUsage(RunUsage):
+    """Account for each response, estimating costs missing from usage."""
+
+    def __init__(self, models: tuple[str, ...]) -> None:
+        """Track usage across retries and the configured fallback models."""
+        super().__init__()
+        self._models = models
+
+    def incr(self, incr_usage: RunUsage | RequestUsage) -> None:
+        """Preserve known prices and estimate unpriced response tokens."""
+        if incr_usage.cost is None and (
+            incr_usage.input_tokens or incr_usage.output_tokens
+        ):
+            from decimal import Decimal
+
+            incr_usage = copy(incr_usage)
+            incr_usage.cost = Decimal(
+                str(
+                    max(
+                        estimate_cost(
+                            model,
+                            incr_usage.input_tokens,
+                            incr_usage.output_tokens,
+                        )
+                        for model in self._models
+                    )
+                )
+            )
+        super().incr(incr_usage)
 
 
 class Spend:

@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -22,6 +23,7 @@ from pydantic_ai.settings import ModelSettings, merge_model_settings
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.usage import RequestUsage
 
+from lorebinders.agent.spend import SpendUsage
 from lorebinders.agent_settings import provider_factory
 from lorebinders.models import (
     AgentDeps,
@@ -210,20 +212,50 @@ async def run_agent_async(
         The output data from the agent run.
     """
     if isinstance(agent.model, FallbackModel):
-        model = agent.model.models[0].model_name
+        models = agent.model.models
     else:
         assert isinstance(agent.model, Model)
-        model = agent.model.model_name
+        models = (agent.model,)
+    model = models[0].model_name
+
+    import copy
+
+    base_settings = agent.model_settings
+    safe_settings: ModelSettings = (
+        copy.deepcopy(base_settings)
+        if base_settings and not callable(base_settings)
+        else {}
+    )
+    if model_settings:
+        safe_settings.update(copy.deepcopy(model_settings))
+    output_limit = min(
+        deps.settings.max_output_tokens,
+        *(
+            (candidate.settings or {}).get(
+                "max_tokens", deps.settings.max_output_tokens
+            )
+            for candidate in models
+        ),
+    )
+    requested_limit = safe_settings.get("max_tokens")
+    if requested_limit is not None:
+        if requested_limit < 1:
+            raise ValueError("max_tokens must be positive")
+        output_limit = min(output_limit, requested_limit)
+    safe_settings["max_tokens"] = output_limit
 
     estimated_cost = 0.0
     reserved = False
+    run_usage = SpendUsage(tuple(candidate.model_name for candidate in models))
     if deps.spend is not None:
         from lorebinders.agent.spend import estimate_cost
 
         estimated_input_tokens = max(1, len(user_prompt) // 4)
-        estimated_output_tokens = estimated_input_tokens
-        estimated_cost = estimate_cost(
-            model, estimated_input_tokens, estimated_output_tokens
+        estimated_cost = max(
+            estimate_cost(
+                candidate.model_name, estimated_input_tokens, output_limit
+            )
+            for candidate in models
         )
         await deps.spend.reserve(estimated_cost)
         reserved = True
@@ -238,20 +270,12 @@ async def run_agent_async(
             f"Running agent with model {model}",
             meta,
         )
-        import copy
-
-        base_settings = agent.model_settings
-        safe_settings: ModelSettings = (
-            copy.deepcopy(base_settings)
-            if base_settings and not callable(base_settings)
-            else {}
-        )
-        if model_settings:
-            safe_settings.update(copy.deepcopy(model_settings))
-
         try:
             res = await agent.run(
-                user_prompt, deps=deps, model_settings=safe_settings
+                user_prompt,
+                deps=deps,
+                model_settings=safe_settings,
+                usage=run_usage,
             )
             logger.debug("Agent run completed successfully")
 
@@ -308,11 +332,14 @@ async def run_agent_async(
                 if deps.spend is not None:
                     from lorebinders.agent.spend import estimate_cost
 
-                    cost = estimate_cost(
-                        actual_model,
-                        usage.input_tokens or 0,
-                        usage.output_tokens or 0,
-                    )
+                    if isinstance(usage.cost, (Decimal, int, float)):
+                        cost = float(usage.cost)
+                    else:
+                        cost = estimate_cost(
+                            actual_model,
+                            usage.input_tokens or 0,
+                            usage.output_tokens or 0,
+                        )
             except Exception as e:
                 logger.warning(f"Failed to collect token usage metrics: {e}")
 
@@ -335,7 +362,21 @@ async def run_agent_async(
             raise
     finally:
         if reserved and deps.spend is not None:
-            await deps.spend.release(estimated_cost)
+            failed_cost: float | None = None
+            if run_usage.cost is not None:
+                failed_cost = float(run_usage.cost)
+            elif run_usage.requests:
+                from lorebinders.agent.spend import estimate_cost
+
+                failed_cost = max(
+                    estimate_cost(
+                        candidate.model_name,
+                        run_usage.input_tokens,
+                        run_usage.output_tokens,
+                    )
+                    for candidate in models
+                )
+            await deps.spend.release(estimated_cost, actual_cost=failed_cost)
 
 
 def _ensure_prefix(model: str) -> str:
@@ -380,14 +421,22 @@ def create_extraction_agent(
 
     fallback_model = _settings.extraction_fallback_model
     fallback_settings = (
-        _settings.model_settings_for(fallback_model) if fallback_model else None
+        _settings.model_settings_for(
+            fallback_model,
+            max_output_tokens=_settings.extraction_max_output_tokens,
+        )
+        if fallback_model
+        else None
     )
 
     agent: Agent[AgentDeps, ExtractionResult] = create_agent(
         init_extraction_model(_settings),
         deps_type=AgentDeps,
         output_type=_output,
-        model_settings=_settings.model_settings_for(_settings.extraction_model),
+        model_settings=_settings.model_settings_for(
+            _settings.extraction_model,
+            max_output_tokens=_settings.extraction_max_output_tokens,
+        ),
         fallback=fallback_model,
         fallback_settings=fallback_settings,
     )

@@ -1,14 +1,23 @@
 import asyncio
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic_ai import Agent
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.usage import RequestUsage
 
 from lorebinders.agent.analysis import analyze_entities, analyze_entity_results
 from lorebinders.agent.extraction import extract_book
-from lorebinders.agent.factory import run_agent_async
+from lorebinders.agent.factory import (
+    create_analysis_agent,
+    create_extraction_agent,
+    run_agent_async,
+)
 from lorebinders.agent.spend import Spend, SpendError, estimate_cost
 from lorebinders.agent.summarization import summarize_binder
 from lorebinders.models import (
@@ -27,6 +36,232 @@ from lorebinders.models import (
 )
 from lorebinders.refinement.alias_resolution import resolve_aliases
 from lorebinders.settings import Settings
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("succeeds", [True, False])
+async def test_mixed_cost_retries_charge_unpriced_responses(
+    succeeds: bool,
+) -> None:
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    calls = 0
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    '{"response": 42}' if succeeds and calls == 2 else "invalid"
+                )
+            ],
+            usage=RequestUsage(
+                input_tokens=1000,
+                output_tokens=1000,
+                cost=Decimal("0.3") if calls == 1 else None,
+            ),
+        )
+
+    agent = Agent(
+        FunctionModel(respond), deps_type=AgentDeps, output_type=int, retries=1
+    )
+    spend = Spend(limit=2.5)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda _: "prompt", spend=spend
+    )
+
+    if succeeds:
+        assert await run_agent_async(agent, "prompt", deps) == 42
+    else:
+        with pytest.raises(UnexpectedModelBehavior):
+            await run_agent_async(agent, "prompt", deps)
+
+    assert calls == 2
+    assert spend.total == pytest.approx(0.304)
+    assert spend.reserved == 0.0
+
+
+@pytest.mark.anyio
+async def test_failed_agent_run_records_usage_already_billed() -> None:
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(
+            parts=[TextPart("invalid output")],
+            usage=RequestUsage(
+                input_tokens=10, output_tokens=5, cost=Decimal("0.3")
+            ),
+        )
+
+    agent = Agent(
+        FunctionModel(respond), deps_type=AgentDeps, output_type=int, retries=0
+    )
+    spend = Spend(limit=2.5)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda _: "prompt", spend=spend
+    )
+
+    with pytest.raises(UnexpectedModelBehavior):
+        await run_agent_async(agent, "prompt", deps)
+
+    assert spend.total == pytest.approx(0.3)
+    assert spend.reserved == 0.0
+
+
+@pytest.mark.anyio
+async def test_agent_run_uses_reported_cost_instead_of_token_estimate() -> None:
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(
+            parts=[TextPart("done")],
+            usage=RequestUsage(
+                input_tokens=10, output_tokens=5, cost=Decimal("0.3")
+            ),
+        )
+
+    agent = Agent(FunctionModel(respond), deps_type=AgentDeps)
+    spend = Spend(limit=2.5)
+    deps = AgentDeps(
+        settings=Settings(), prompt_loader=lambda _: "prompt", spend=spend
+    )
+
+    assert await run_agent_async(agent, "prompt", deps) == "done"
+    assert spend.total == pytest.approx(0.3)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "stage, expected", [("extraction", 4000), ("analysis", 20000)]
+)
+async def test_stage_output_limits_reach_primary_and_fallback(
+    monkeypatch: pytest.MonkeyPatch, stage: str, expected: int
+) -> None:
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    received: list[int] = []
+
+    def primary(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        assert info.model_settings is not None
+        received.append(info.model_settings["max_tokens"])
+        raise ModelHTTPError(status_code=403, model_name="primary")
+
+    def fallback(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        assert info.model_settings is not None
+        received.append(info.model_settings["max_tokens"])
+        return ModelResponse(parts=[TextPart("done")])
+
+    models = iter([FunctionModel(primary), FunctionModel(fallback)])
+
+    def infer_test_model(*args: Any) -> FunctionModel:
+        return next(models)
+
+    monkeypatch.setattr(
+        "lorebinders.agent.factory.infer_model", infer_test_model
+    )
+    settings = Settings(**{f"{stage}_fallback_model": "test"})
+    factory = (
+        create_extraction_agent
+        if stage == "extraction"
+        else create_analysis_agent
+    )
+    agent = factory(settings=settings, output_type=str)
+    deps = AgentDeps(settings=settings, prompt_loader=lambda _: "prompt")
+
+    assert await run_agent_async(agent, "prompt", deps) == "done"
+    assert received == [expected, expected]
+
+
+@pytest.mark.anyio
+async def test_short_prompt_reserves_the_output_cap_before_dispatch() -> None:
+    calls = 0
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        return ModelResponse(parts=[TextPart("done")])
+
+    settings = Settings(max_output_tokens=4096)
+    deps = AgentDeps(
+        settings=settings,
+        prompt_loader=lambda _: "prompt",
+        spend=Spend(limit=0.005),
+    )
+    agent = Agent(FunctionModel(respond), deps_type=AgentDeps)
+
+    with pytest.raises(SpendError):
+        await run_agent_async(agent, "repeat forever", deps)
+
+    assert calls == 0
+    assert deps.spend is not None
+    assert deps.spend.reserved == 0.0
+
+
+@pytest.mark.anyio
+async def test_reservation_accounts_for_the_more_expensive_fallback() -> None:
+    agent = Agent(
+        FallbackModel(
+            TestModel(model_name="seed-1.6-flash"),
+            TestModel(model_name="claude-3-5-sonnet"),
+        ),
+        deps_type=AgentDeps,
+    )
+    deps = AgentDeps(
+        settings=Settings(max_output_tokens=4096),
+        prompt_loader=lambda _: "prompt",
+        spend=Spend(limit=0.01),
+    )
+
+    with pytest.raises(SpendError):
+        await run_agent_async(agent, "repeat forever", deps)
+
+    assert deps.spend is not None
+    assert deps.spend.reserved == 0.0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "override, expected", [(None, 512), (100, 100), (9999, 512)]
+)
+async def test_output_cap_reaches_primary_and_fallback_requests(
+    override: int | None, expected: int
+) -> None:
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    from lorebinders.agent.factory import create_agent
+
+    received: list[int | None] = []
+
+    def primary(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        received.append((info.model_settings or {}).get("max_tokens"))
+        raise ModelHTTPError(status_code=403, model_name="primary")
+
+    def fallback(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        received.append((info.model_settings or {}).get("max_tokens"))
+        return ModelResponse(parts=[TextPart("done")])
+
+    agent = create_agent(
+        FunctionModel(primary),
+        deps_type=AgentDeps,
+        output_type=str,
+        fallback=FunctionModel(fallback),
+    )
+    deps = AgentDeps(
+        settings=Settings(max_output_tokens=512),
+        prompt_loader=lambda _: "prompt",
+    )
+    model_settings = {"max_tokens": override} if override is not None else None
+
+    assert (
+        await run_agent_async(
+            agent, "prompt", deps, model_settings=model_settings
+        )
+        == "done"
+    )
+    assert received == [expected, expected]
 
 
 @pytest.mark.anyio
@@ -327,7 +562,7 @@ async def test_run_agent_async_reservation_accounts_for_output_tokens() -> None:
     with patch.object(agent, "run", side_effect=mock_run):
         await run_agent_async(agent, prompt, deps)
 
-    expected_cost = estimate_cost(model.model_name, 100, 100)
+    expected_cost = estimate_cost(model.model_name, 100, 20000)
     assert reserved_amount == expected_cost
     assert reserved_amount > in_only_cost
 
@@ -353,7 +588,7 @@ async def test_run_agent_async_empty_prompt_reserves_minimum_tokens() -> None:
     with patch.object(agent, "run", side_effect=mock_run):
         await run_agent_async(agent, "", deps)
 
-    expected_min_cost = estimate_cost(model.model_name, 1, 1)
+    expected_min_cost = estimate_cost(model.model_name, 1, 20000)
     assert reserved_amount == expected_min_cost
     assert reserved_amount > 0.0
 
@@ -400,7 +635,7 @@ async def test_concurrent_real_agent_runs_do_not_overshoot_ceiling() -> None:
     single_res = estimate_cost(model.model_name, 52, 52)
     ceiling = single_res * 2
     spend = Spend(limit=ceiling)
-    settings = Settings(max_concurrency=10)
+    settings = Settings(max_concurrency=10, max_output_tokens=52)
     deps = AgentDeps(
         settings=settings, prompt_loader=lambda x: "prompt", spend=spend
     )
