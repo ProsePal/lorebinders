@@ -65,9 +65,9 @@ class Settings(BaseSettings):
             "isolated failures."
         ),
     )
-    spend_ceiling: float | None = Field(2.5, gt=0, allow_inf_nan=False)
-    max_output_tokens: int = Field(20000, ge=1)
-    extraction_max_output_tokens: int = Field(4000, ge=1)
+    spend_ceiling: float | None = Field(None, gt=0, allow_inf_nan=False)
+    max_output_tokens: int | None = Field(None, ge=1)
+    extraction_max_output_tokens: int | None = Field(None, ge=1)
 
     workspace_base_path: Path = Path(__file__).parent / "work"
     db_url: str = "sqlite:///:memory:"
@@ -100,11 +100,13 @@ class Settings(BaseSettings):
         """Set reasoning level for a given model."""
         model_provider = model.split(":")[0] if ":" in model else "openrouter"
         model_settings = get_model_settings(model_provider)
-        model_settings["max_tokens"] = (
+        output_limit = (
             self.max_output_tokens
             if max_output_tokens is None
             else max_output_tokens
         )
+        if output_limit is not None:
+            model_settings["max_tokens"] = output_limit
         return model_settings
 
 

@@ -86,6 +86,16 @@ your shell or use a `.env` file in the working directory.
 
 ### Key Environment Variables
 
+- `LOREBINDERS_SPEND_CEILING`: Optional soft USD spend ceiling per pipeline
+  run. Disabled by default. In-flight requests and estimated prices can cause
+  the final cost to exceed the ceiling.
+- `LOREBINDERS_MAX_OUTPUT_TOKENS`: Optional maximum generated tokens per
+  model response. Unset by default, leaving the provider's limit in effect.
+  Reasoning tokens count toward this limit where the provider uses a shared
+  completion budget.
+- `LOREBINDERS_EXTRACTION_MAX_OUTPUT_TOKENS`: Optional extraction-specific
+  response limit. Defaults to the general limit when that is configured.
+  Per-call settings may lower configured limits but cannot raise them.
 - `LOREBINDERS_EXTRACTION_MODEL`: The AI model used for extracting entities.
   - Default: `openrouter:bytedance/seed-1.6-flash`
 - `LOREBINDERS_ANALYSIS_MODEL`: The AI model used for analyzing entity

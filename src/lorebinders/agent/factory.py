@@ -228,21 +228,23 @@ async def run_agent_async(
     )
     if model_settings:
         safe_settings.update(copy.deepcopy(model_settings))
-    output_limit = min(
-        deps.settings.max_output_tokens,
-        *(
-            (candidate.settings or {}).get(
-                "max_tokens", deps.settings.max_output_tokens
-            )
-            for candidate in models
-        ),
-    )
-    requested_limit = safe_settings.get("max_tokens")
-    if requested_limit is not None:
-        if requested_limit < 1:
+    configured_limits: list[int] = [
+        limit
+        for limit in (
+            deps.settings.max_output_tokens,
+            *(
+                (candidate.settings or {}).get("max_tokens")
+                for candidate in models
+            ),
+            safe_settings.get("max_tokens"),
+        )
+        if limit is not None
+    ]
+    output_limit = min(configured_limits) if configured_limits else None
+    if output_limit is not None:
+        if output_limit < 1:
             raise ValueError("max_tokens must be positive")
-        output_limit = min(output_limit, requested_limit)
-    safe_settings["max_tokens"] = output_limit
+        safe_settings["max_tokens"] = output_limit
 
     estimated_cost = 0.0
     reserved = False
@@ -253,7 +255,11 @@ async def run_agent_async(
         estimated_input_tokens = max(1, len(user_prompt) // 4)
         estimated_cost = max(
             estimate_cost(
-                candidate.model_name, estimated_input_tokens, output_limit
+                candidate.model_name,
+                estimated_input_tokens,
+                output_limit
+                if output_limit is not None
+                else estimated_input_tokens,
             )
             for candidate in models
         )

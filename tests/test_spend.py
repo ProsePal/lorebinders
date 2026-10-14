@@ -39,6 +39,34 @@ from lorebinders.settings import Settings
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("requested", [None, 100000])
+async def test_unconfigured_library_does_not_impose_output_limits(
+    requested: int | None,
+) -> None:
+    received: list[int | None] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        received.append((info.model_settings or {}).get("max_tokens"))
+        return ModelResponse(parts=[TextPart("done")])
+
+    agent = Agent(FunctionModel(respond), deps_type=AgentDeps)
+    deps = AgentDeps(
+        settings=Settings(
+            spend_ceiling=None,
+            max_output_tokens=None,
+            extraction_max_output_tokens=None,
+        ),
+        prompt_loader=lambda _: "prompt",
+    )
+    overrides = {"max_tokens": requested} if requested is not None else None
+    assert (
+        await run_agent_async(agent, "prompt", deps, model_settings=overrides)
+        == "done"
+    )
+    assert received == [requested]
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("succeeds", [True, False])
 async def test_mixed_cost_retries_charge_unpriced_responses(
     succeeds: bool,
@@ -66,7 +94,7 @@ async def test_mixed_cost_retries_charge_unpriced_responses(
     agent = Agent(
         FunctionModel(respond), deps_type=AgentDeps, output_type=int, retries=1
     )
-    spend = Spend(limit=2.5)
+    spend = Spend(limit=1.0)
     deps = AgentDeps(
         settings=Settings(), prompt_loader=lambda _: "prompt", spend=spend
     )
@@ -97,7 +125,7 @@ async def test_failed_agent_run_records_usage_already_billed() -> None:
     agent = Agent(
         FunctionModel(respond), deps_type=AgentDeps, output_type=int, retries=0
     )
-    spend = Spend(limit=2.5)
+    spend = Spend(limit=1.0)
     deps = AgentDeps(
         settings=Settings(), prompt_loader=lambda _: "prompt", spend=spend
     )
@@ -120,7 +148,7 @@ async def test_agent_run_uses_reported_cost_instead_of_token_estimate() -> None:
         )
 
     agent = Agent(FunctionModel(respond), deps_type=AgentDeps)
-    spend = Spend(limit=2.5)
+    spend = Spend(limit=1.0)
     deps = AgentDeps(
         settings=Settings(), prompt_loader=lambda _: "prompt", spend=spend
     )
@@ -131,7 +159,7 @@ async def test_agent_run_uses_reported_cost_instead_of_token_estimate() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "stage, expected", [("extraction", 4000), ("analysis", 20000)]
+    "stage, expected", [("extraction", 128), ("analysis", 512)]
 )
 async def test_stage_output_limits_reach_primary_and_fallback(
     monkeypatch: pytest.MonkeyPatch, stage: str, expected: int
@@ -160,7 +188,11 @@ async def test_stage_output_limits_reach_primary_and_fallback(
     monkeypatch.setattr(
         "lorebinders.agent.factory.infer_model", infer_test_model
     )
-    settings = Settings(**{f"{stage}_fallback_model": "test"})
+    settings = Settings(
+        max_output_tokens=512,
+        extraction_max_output_tokens=128,
+        **{f"{stage}_fallback_model": "test"},
+    )
     factory = (
         create_extraction_agent
         if stage == "extraction"
@@ -562,7 +594,7 @@ async def test_run_agent_async_reservation_accounts_for_output_tokens() -> None:
     with patch.object(agent, "run", side_effect=mock_run):
         await run_agent_async(agent, prompt, deps)
 
-    expected_cost = estimate_cost(model.model_name, 100, 20000)
+    expected_cost = estimate_cost(model.model_name, 100, 100)
     assert reserved_amount == expected_cost
     assert reserved_amount > in_only_cost
 
@@ -588,7 +620,7 @@ async def test_run_agent_async_empty_prompt_reserves_minimum_tokens() -> None:
     with patch.object(agent, "run", side_effect=mock_run):
         await run_agent_async(agent, "", deps)
 
-    expected_min_cost = estimate_cost(model.model_name, 1, 20000)
+    expected_min_cost = estimate_cost(model.model_name, 1, 1)
     assert reserved_amount == expected_min_cost
     assert reserved_amount > 0.0
 

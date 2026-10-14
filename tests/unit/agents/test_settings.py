@@ -5,6 +5,22 @@ from lorebinders.agent_settings import get_model_settings as settings_config
 from lorebinders.settings import Settings
 
 
+def test_limits_are_opt_in_for_library_users(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "LOREBINDERS_SPEND_CEILING",
+        "LOREBINDERS_MAX_OUTPUT_TOKENS",
+        "LOREBINDERS_EXTRACTION_MAX_OUTPUT_TOKENS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.spend_ceiling is None
+    assert settings.max_output_tokens is None
+    assert settings.extraction_max_output_tokens is None
+    assert "max_tokens" not in settings.model_settings_for("openrouter:test")
+
+
 @pytest.mark.parametrize(
     "field, value",
     [
