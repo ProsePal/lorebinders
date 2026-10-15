@@ -42,6 +42,52 @@ class Spend:
                 self._check_ceiling()
 
 
+class RequestBudget:
+    """Reserve and reconcile each request against a shared pipeline budget."""
+
+    def __init__(self, spend: Spend | None, reservation: float) -> None:
+        """Adopt the reservation made before entering the agent run."""
+        self.spend = spend
+        self.reservation = reservation
+        self.active = spend is not None
+
+    async def reserve_request(
+        self, model: str, input_tokens: int, output_tokens: int
+    ) -> None:
+        """Check the budget before each primary, retry, or fallback call."""
+        if self.spend is None:
+            return
+        estimate = estimate_cost(model, input_tokens, output_tokens)
+        additional = max(0.0, estimate - self.reservation)
+        if not self.active:
+            additional = estimate
+        await self.spend.reserve(additional)
+        self.reservation += additional
+        self.active = True
+
+    async def release(self, cost: float | None = None) -> None:
+        """Finish accounting even if cancellation arrives while locking."""
+        if self.spend is None or not self.active:
+            return
+        task = asyncio.create_task(
+            self.spend.release(self.reservation, actual_cost=cost)
+        )
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception:
+                break
+        self.active = False
+        self.reservation = 0.0
+        if cancelled:
+            task.exception()
+            raise asyncio.CancelledError
+        task.result()
+
+
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Estimate cost for an OpenRouter model."""
     cost_per_m_in = 0.0
