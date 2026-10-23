@@ -41,6 +41,10 @@ constraints in `[tool.uv]`. The protections provided by those constraints
 are unavailable with this installation method, so vulnerable transitive
 dependencies may be installed.
 
+For `pip` installs, use a fresh virtual environment to minimize the risk
+of reusing older, vulnerable dependencies from an existing environment.
+This isolation does not enforce the uv security constraints.
+
 ## CLI Usage (Optional)
 
 LoreBinders provides a command-line interface (CLI) for generating your Story
