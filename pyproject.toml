@@ -68,8 +68,6 @@ requires = ["uv_build>=0.9.18,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv]
-# Security floors for transitive dependencies whose parents still permit
-# vulnerable releases. Pillow's security floor comes from ebook2text.
 constraint-dependencies = [
   "anyio>=4.14.2",
   "certifi>=2026.10.19",

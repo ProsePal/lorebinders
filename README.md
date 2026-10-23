@@ -36,6 +36,11 @@ the source directory.
 pip install .
 ```
 
+Installing with `pip` does not apply the transitive dependency security
+constraints in `[tool.uv]`. The protections provided by those constraints
+are unavailable with this installation method, so vulnerable transitive
+dependencies may be installed.
+
 ## CLI Usage (Optional)
 
 LoreBinders provides a command-line interface (CLI) for generating your Story
