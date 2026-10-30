@@ -114,6 +114,13 @@ snapshot loader for direct agent runs. It accepts filenames such as
 `extraction.txt`; hash its returned text encoded as UTF-8 to record the
 effective prompt identity for reproducibility.
 
+Entity cleanup preserves compound descriptive titles containing an `of`
+phrase. Distinct names containing such phrases are not merged by automatic
+substring, title, or plural matching, even when one contains the other;
+case-insensitive exact matches still merge. Evidence-based alias resolution
+can join those names later when enabled. Other historical name heuristics
+remain in place, so this is not a general semantic identity resolver.
+
 ## Configuration
 
 LoreBinders uses environment variables for configuration. You can set these in

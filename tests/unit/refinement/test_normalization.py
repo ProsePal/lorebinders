@@ -94,3 +94,10 @@ def test_merge_values(
 )
 def test_remove_titles_preserves_descriptive_identity(name: str) -> None:
     assert remove_titles(name) == name
+
+
+def test_remove_titles_preserves_compound_descriptive_title() -> None:
+    assert (
+        remove_titles("Lord Commander of the Night Watch")
+        == "Lord Commander of the Night Watch"
+    )

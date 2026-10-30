@@ -79,3 +79,26 @@ def test_resolve_binder_resolves_categories() -> None:
     assert "John" not in binder.categories["Characters"].entities
     assert "John Smith" in binder.categories["Characters"].entities
     assert "Locations" in binder.categories
+
+
+@pytest.mark.parametrize(
+    "category,names",
+    [
+        ("Locations", ["castle", "Business wing of the castle"]),
+        (
+            "Characters",
+            [
+                "Lord Commander of the Night Watch",
+                "Commander of the Night Watch",
+            ],
+        ),
+    ],
+)
+def test_binder_resolution_preserves_distinct_descriptive_identities(
+    category: str, names: list[str]
+) -> None:
+    binder = Binder()
+    for name in names:
+        binder.add_appearance(category, name, 1, "Book 1", {"Role": name})
+    resolved = resolve_binder(binder)
+    assert set(resolved.categories[category].entities) == set(names)

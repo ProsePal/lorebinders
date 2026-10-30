@@ -21,7 +21,7 @@ from lorebinders.refinement.sorting import (
         ("Soldier", "Soldiers", True),
         ("Elf", "Elves", True),
         ("City", "Cities", True),
-        ("Kingdom of Rohan", "Rohan", True),
+        ("Kingdom of Rohan", "Rohan", False),
         ("The Dark Lord", "Dark Lord", True),
         ("Mr. Frodo", "Frodo", True),
         ("Master Samwise", "Samwise", True),
@@ -29,6 +29,8 @@ from lorebinders.refinement.sorting import (
         ("Rohan", "Gondor", False),
         ("Frodo", "Sam", False),
         ("The King", "The Queen", False),
+        ("The Witch King of Angmar", "Witch King", False),
+        ("Business wing of the castle", "business wing of the castle", True),
     ],
 )
 def test_is_similar_key_basic(key1: str, key2: str, expected: bool) -> None:
@@ -44,7 +46,6 @@ def test_is_similar_key_basic(key1: str, key2: str, expected: bool) -> None:
         ("Frodo", "Frodo Baggins"),
         ("Gandalf the Grey", "Gandalf"),
         ("Lady Galadriel", "Galadriel"),
-        ("The Witch King of Angmar", "Witch King"),
         ("Saruman the White", "Saruman"),
         ("King Theoden", "Theoden"),
         ("Master Elrond", "Elrond"),
@@ -68,7 +69,7 @@ def test_is_similar_key_complex_matches(key1: str, key2: str) -> None:
         (["Bilbo", "Bilbo Baggins", "Mr. Bilbo"], 1),
         (["Thorin", "Thorin Oakenshield"], 1),
         (["Legolas", "Legolas Greenleaf"], 1),
-        (["Gimli", "Gimli son of Gloin"], 1),
+        (["Gimli", "Gimli son of Gloin"], 2),
         (
             ["Sauron", "The Dark Lord Sauron", "Necromancer"],
             2,
@@ -211,3 +212,34 @@ def test_sort_extractions_handles_narrator() -> None:
     assert "NarratorGuy" in sorted_data["Characters"]
     assert "I" not in sorted_data["Characters"]
     assert "John" in sorted_data["Characters"]
+
+
+@pytest.mark.parametrize(
+    "category,names",
+    [
+        ("Locations", ["castle", "Business wing of the castle"]),
+        (
+            "Characters",
+            [
+                "Lord Commander of the Night Watch",
+                "Commander of the Night Watch",
+            ],
+        ),
+    ],
+)
+def test_sort_extractions_preserves_distinct_descriptive_identities(
+    category: str, names: list[str]
+) -> None:
+    raw_data = {
+        1: {
+            category: [
+                models.ExtractedEntity(
+                    name=name, presence_type="literal_entity"
+                )
+                for name in names
+            ]
+        }
+    }
+    assert sort_extractions(raw_data) == {
+        category: {name: [1] for name in names}
+    }

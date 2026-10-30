@@ -34,6 +34,12 @@ def is_similar_key(key1: str, key2: str) -> bool:
     if k1 == k2:
         return True
 
+    # Containment or title removal cannot prove identity for descriptive
+    # names: a wing of a castle is distinct from that castle, and compound
+    # ranks may identify different people. Leave these to alias resolution.
+    if "of" in k1.split()[1:-1] or "of" in k2.split()[1:-1]:
+        return False
+
     detitled_k1 = remove_titles(k1)
     detitled_k2 = remove_titles(k2)
     singular_k1 = to_singular(k1)
