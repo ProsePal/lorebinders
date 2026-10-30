@@ -88,6 +88,32 @@ uv run lorebinders-cli path/to/your/book.epub \
 - `--log-file`: Path to save execution logs.
 - `--verbose`: Enable verbose output for debugging.
 
+### Runtime prompt files
+
+Trusted operators can override any stage without replacing bundled assets:
+
+```bash
+uv run --extra cli lorebinders-cli --book manuscript.epub \
+    --author "Author Name" --series-title "Series Title" \
+    --extraction-prompt prompts/extraction.txt \
+    --analysis-prompt prompts/analysis.txt
+```
+
+The other options are `--summarization-prompt` and
+`--alias-resolution-prompt`. Unspecified stages keep their bundled prompts.
+Every configured file must be readable UTF-8 and contain non-whitespace text;
+all files are validated and snapshotted before any model call, even when a
+stage is disabled. These paths are trusted local operator inputs and should
+not be accepted directly from public API clients.
+
+Python callers can pass `prompt_files={"extraction": Path("prompt.txt")}`
+to `lorebinders.run` or `lorebinders.workflow.build_binder`. Accepted keys are
+`extraction`, `analysis`, `summarization`, and `alias_resolution`.
+`lorebinders.prompts.build_prompt_loader(prompt_files)` exposes the same
+snapshot loader for direct agent runs. It accepts filenames such as
+`extraction.txt`; hash its returned text encoded as UTF-8 to record the
+effective prompt identity for reproducibility.
+
 ## Configuration
 
 LoreBinders uses environment variables for configuration. You can set these in

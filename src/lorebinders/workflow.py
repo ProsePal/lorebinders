@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeAlias
 
@@ -16,9 +16,9 @@ from lorebinders.agent.factory import (
     create_analysis_agent,
     create_extraction_agent,
     create_summarization_agent,
-    load_prompt_from_assets,
 )
 from lorebinders.agent.summarization import summarize_binder
+from lorebinders.prompts import build_prompt_loader
 from lorebinders.refinement import refine_binder_async
 from lorebinders.refinement.cleaning import clean_traits
 from lorebinders.refinement.conversion import convert_to_text, ingest
@@ -154,6 +154,8 @@ async def build_binder(
     summarization_agent: _SumAgent | None = None,
     alias_agent: _AliasAgent | None = None,
     provider: type[StorageProvider] = FilesystemStorage,
+    *,
+    prompt_files: Mapping[str, Path] | None = None,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
 
@@ -166,17 +168,19 @@ async def build_binder(
         summarization_agent: Optional agent override.
         alias_agent: Optional agent override for alias resolution. Ignored
             when alias resolution is disabled in settings.
+        prompt_files: Trusted operator stage-to-file prompt overrides.
         provider: Storage provider class.
 
     Returns:
         The Path to the generated story bible report.
     """
+    prompt_loader = build_prompt_loader(prompt_files)
     settings = get_settings()
     from lorebinders.agent.spend import Spend
 
     deps = models.AgentDeps(
         settings=settings,
-        prompt_loader=load_prompt_from_assets,
+        prompt_loader=prompt_loader,
         spend=Spend(limit=settings.spend_ceiling),
     )
 

@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Any, NoReturn
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -462,3 +463,54 @@ async def test_build_binder_clean_run_no_partial_results(
         text += page.extract_text()
 
     assert "Note: Partial Results" not in text
+
+
+@pytest.mark.anyio
+async def test_runtime_prompts_reach_agent_dependencies(
+    run_config: models.RunConfiguration, temp_workspace: Path, tmp_path: Path
+) -> None:
+    prompts = {}
+    for stage in (
+        "extraction",
+        "analysis",
+        "summarization",
+        "alias_resolution",
+    ):
+        path = tmp_path / f"{stage}.txt"
+        path.write_text(f"Custom {stage}", encoding="utf-8")
+        prompts[stage] = path
+
+    class ObservedDependenciesError(Exception):
+        pass
+
+    async def inspect_extraction(
+        book: models.Book,
+        agent: Any,
+        deps: models.AgentDeps,
+        *args: Any,
+        **kwargs: Any,
+    ) -> NoReturn:
+        for stage in prompts:
+            assert deps.prompt_loader(f"{stage}.txt") == f"Custom {stage}"
+        raise ObservedDependenciesError
+
+    with patch(
+        "lorebinders.workflow.extract_book", side_effect=inspect_extraction
+    ):
+        with pytest.raises(ObservedDependenciesError):
+            await build_binder(run_config, prompt_files=prompts)
+
+
+@pytest.mark.anyio
+async def test_invalid_prompt_fails_before_agent_construction(
+    run_config: models.RunConfiguration, tmp_path: Path
+) -> None:
+    with patch(
+        "lorebinders.workflow.create_extraction_agent",
+        side_effect=AssertionError("Agent constructed too soon"),
+    ):
+        with pytest.raises(FileNotFoundError):
+            await build_binder(
+                run_config,
+                prompt_files={"alias_resolution": tmp_path / "missing"},
+            )
