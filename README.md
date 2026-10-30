@@ -88,6 +88,55 @@ uv run lorebinders-cli path/to/your/book.epub \
 - `--log-file`: Path to save execution logs.
 - `--verbose`: Enable verbose output for debugging.
 
+### Runtime prompt files
+
+Trusted operators can override any stage without replacing bundled assets:
+
+```bash
+uv run --extra cli lorebinders-cli --book manuscript.epub \
+    --author "Author Name" --series-title "Series Title" \
+    --extraction-prompt prompts/extraction.txt \
+    --analysis-prompt prompts/analysis.txt
+```
+
+The other options are `--summarization-prompt` and
+`--alias-resolution-prompt`. Unspecified stages keep their bundled prompts.
+Every configured file must be readable UTF-8 and contain non-whitespace text;
+all files are validated and snapshotted before any model call, even when a
+stage is disabled. These paths are trusted local operator inputs and should
+not be accepted directly from public API clients.
+
+Python callers can pass `prompt_files={"extraction": Path("prompt.txt")}`
+to `lorebinders.run` or `lorebinders.workflow.build_binder`. Accepted keys are
+`extraction`, `analysis`, `summarization`, and `alias_resolution`.
+`lorebinders.prompts.build_prompt_loader(prompt_files)` exposes the same
+snapshot loader for direct agent runs. It accepts filenames such as
+`extraction.txt`; hash its returned text encoded as UTF-8 to record the
+effective prompt identity for reproducibility.
+
+Prompt files and manuscript inputs must remain immutable while a build is
+starting. For coordinated updates, publish a new versioned directory and
+point the next build at it; the loader does not provide atomic multi-file
+publication. After loading, each effective prompt remains fixed for that run.
+Operators are responsible for fitting prompts plus manuscript text and
+requested output within the selected model's context budget.
+
+All builds use an internal cache workspace suffix derived from effective
+prompts, source bytes, narrator/run configuration, settings, and model names.
+Identical inputs reuse cached extractions, profiles, and summaries; changed
+inputs use a separate workspace. Historical workspaces remain intact but are
+not reused by this cache-identity version, including for bundled defaults.
+The user/run prefix, human series title, and report filename remain unchanged.
+Custom storage providers must implement
+`set_workspace(author, title, user_id=None, *, cache_namespace=None)` and
+scope every extraction, profile, and summary cache key by that namespace.
+Ignoring it can reuse stale results. The engine passes the original title
+and namespace separately so providers can preserve their user/run prefix.
+Built-in filesystem and database providers support this contract. Known
+`httpx.Timeout` and path settings have stable identities; opaque or dynamic
+setting values conservatively disable cache reuse for that build.
+Existing entity normalization and deduplication behavior is preserved.
+
 ## Configuration
 
 LoreBinders uses environment variables for configuration. You can set these in

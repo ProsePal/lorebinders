@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,6 +36,7 @@ def test_run_returns_path(run_config: models.RunConfiguration) -> None:
         summarization_agent: Agent[models.AgentDeps, models.SummarizerResult]
         | None = None,
         provider: type[StorageProvider] = FilesystemStorage,
+        prompt_files: dict[str, Path] | None = None,
     ) -> Path:
         return fake_path
 
@@ -67,6 +69,7 @@ def test_run_passes_optional_args(run_config: models.RunConfiguration) -> None:
         summarization_agent: Agent[models.AgentDeps, models.SummarizerResult]
         | None = None,
         provider: type[StorageProvider] = FilesystemStorage,
+        prompt_files: dict[str, Path] | None = None,
     ) -> Path:
         return fake_path
 
@@ -91,3 +94,23 @@ def test_run_passes_optional_args(run_config: models.RunConfiguration) -> None:
     assert kwargs["analysis_agent"] == fake_agent
     assert kwargs["summarization_agent"] == fake_agent
     assert result == fake_path
+
+
+def test_run_forwards_prompt_files(
+    run_config: models.RunConfiguration, tmp_path: Path
+) -> None:
+    prompt_files = {"analysis": tmp_path / "analysis.txt"}
+
+    async def build_with_prompts(
+        config: models.RunConfiguration,
+        *,
+        prompt_files: dict[str, Path],
+        **kwargs: Any,
+    ) -> Path:
+        return prompt_files["analysis"]
+
+    with patch("lorebinders.app.build_binder", side_effect=build_with_prompts):
+        assert (
+            run(run_config, prompt_files=prompt_files)
+            == tmp_path / "analysis.txt"
+        )

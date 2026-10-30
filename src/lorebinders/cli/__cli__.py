@@ -85,6 +85,20 @@ def main(
         list[str] | None,
         typer.Option("--category", help="Custom category to track"),
     ] = None,
+    extraction_prompt: Annotated[
+        Path | None, typer.Option(help="Override the extraction system prompt")
+    ] = None,
+    analysis_prompt: Annotated[
+        Path | None, typer.Option(help="Override the analysis system prompt")
+    ] = None,
+    summarization_prompt: Annotated[
+        Path | None,
+        typer.Option(help="Override the summarization system prompt"),
+    ] = None,
+    alias_resolution_prompt: Annotated[
+        Path | None,
+        typer.Option(help="Override the alias resolution system prompt"),
+    ] = None,
     log_file: Annotated[
         Path | None, typer.Option("--log-file", help="Path to save logs")
     ] = None,
@@ -146,7 +160,22 @@ def main(
             console=console,
         ) as progress:
             handler = ProgressHandler(progress)
-            output = app.run(config, progress=handler, provider=provider_class)
+            prompt_files = {
+                stage: path
+                for stage, path in (
+                    ("extraction", extraction_prompt),
+                    ("analysis", analysis_prompt),
+                    ("summarization", summarization_prompt),
+                    ("alias_resolution", alias_resolution_prompt),
+                )
+                if path is not None
+            }
+            output = app.run(
+                config,
+                progress=handler,
+                provider=provider_class,
+                prompt_files=prompt_files or None,
+            )
 
         console.print(f"[bold green]Complete![/bold green] Report: {output}")
     except Exception as e:

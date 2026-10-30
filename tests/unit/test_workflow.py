@@ -1,14 +1,19 @@
 """Unit tests for the workflow module."""
 
 import os
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any, NoReturn
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
 
 from lorebinders import models
 from lorebinders.models import ChapterAppearances
 from lorebinders.settings import Settings, get_settings
+from lorebinders.storage import StorageProvider
 from lorebinders.workflow import (
     _aggregate_to_binder,
     build_binder,
@@ -245,9 +250,11 @@ async def test_build_binder_forwards_user_id(
     ):
         await build_binder(config)
 
-    fake_storage.set_workspace.assert_called_once_with(
-        "Test Author", "Test Series", user_id="user_123"
-    )
+    workspace_args, workspace_kwargs = fake_storage.set_workspace.call_args
+    assert workspace_args[0] == "Test Author"
+    assert workspace_args[1] == "Test Series"
+    assert workspace_kwargs["user_id"] == "user_123"
+    assert len(workspace_kwargs["cache_namespace"]) == 64
 
 
 @pytest.mark.anyio
@@ -462,3 +469,285 @@ async def test_build_binder_clean_run_no_partial_results(
         text += page.extract_text()
 
     assert "Note: Partial Results" not in text
+
+
+@pytest.mark.anyio
+async def test_runtime_prompts_reach_agent_dependencies(
+    run_config: models.RunConfiguration, temp_workspace: Path, tmp_path: Path
+) -> None:
+    prompts = {}
+    for stage in (
+        "extraction",
+        "analysis",
+        "summarization",
+        "alias_resolution",
+    ):
+        path = tmp_path / f"{stage}.txt"
+        path.write_text(f"Custom {stage}", encoding="utf-8")
+        prompts[stage] = path
+
+    class ObservedDependenciesError(Exception):
+        pass
+
+    async def inspect_extraction(
+        book: models.Book,
+        agent: Any,
+        deps: models.AgentDeps,
+        *args: Any,
+        **kwargs: Any,
+    ) -> NoReturn:
+        for stage in prompts:
+            assert deps.prompt_loader(f"{stage}.txt") == f"Custom {stage}"
+        raise ObservedDependenciesError
+
+    with patch(
+        "lorebinders.workflow.extract_book", side_effect=inspect_extraction
+    ):
+        with pytest.raises(ObservedDependenciesError):
+            await build_binder(run_config, prompt_files=prompts)
+
+
+@pytest.mark.anyio
+async def test_invalid_prompt_fails_before_agent_construction(
+    run_config: models.RunConfiguration, tmp_path: Path
+) -> None:
+    with patch(
+        "lorebinders.workflow.create_extraction_agent",
+        side_effect=AssertionError("Agent constructed too soon"),
+    ):
+        with pytest.raises(FileNotFoundError):
+            await build_binder(
+                run_config,
+                prompt_files={"alias_resolution": tmp_path / "missing"},
+            )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "default_prompt",
+        "analysis_prompt",
+        "summarization_prompt",
+        "alias_resolution_prompt",
+        "override_prompt",
+        "narrator",
+        "model",
+        "input",
+        "traits",
+        "categories",
+        "appearance",
+        "model_settings",
+        "wrapped_settings",
+    ],
+)
+async def test_workspace_cache_identity_tracks_effective_inputs(
+    run_config: models.RunConfiguration,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed: str,
+) -> None:
+    from lorebinders.agent.extraction import extract_book as real_extract_book
+    from lorebinders.prompts import build_prompt_loader
+    from lorebinders.storage.factory import get_storage as real_get_storage
+
+    settings = Settings(
+        workspace_base_path=tmp_path / "cache", alias_resolution_enabled=False
+    )
+    monkeypatch.setattr("lorebinders.workflow.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "lorebinders.storage.workspace.get_settings", lambda: settings
+    )
+    real_get_storage.cache_clear()
+    wrapped_temperature = [0.1]
+    if changed == "wrapped_settings":
+        from lorebinders.agent.factory import (
+            ConfiguredModel,
+            create_extraction_agent,
+        )
+
+        def configured_extraction(
+            settings: Settings,
+        ) -> Agent[models.AgentDeps, models.ExtractionResult]:
+            agent = create_extraction_agent(settings)
+            agent.model = ConfiguredModel(
+                TestModel(), {"temperature": wrapped_temperature[0]}
+            )
+            return agent
+
+        monkeypatch.setattr(
+            "lorebinders.workflow.create_extraction_agent",
+            configured_extraction,
+        )
+    prompt_path = tmp_path / "override.txt"
+    prompt_path.write_text("Original prompt")
+    prompt_files = (
+        {"extraction": prompt_path} if changed == "override_prompt" else None
+    )
+    visits: list[Path] = []
+    observations: list[models.ObservationEvent] = []
+
+    async def cached_extraction(
+        book: models.Book,
+        agent: Agent[models.AgentDeps, models.ExtractionResult],
+        deps: models.AgentDeps,
+        categories: list[str],
+        config: models.RunConfiguration,
+        storage: StorageProvider,
+        progress: Callable[[models.ProgressUpdate], None] | None = None,
+        on_observe: Callable[[models.ObservationEvent], None] | None = None,
+    ) -> dict[int, dict[str, list[models.ExtractedEntity]]]:
+        visits.append(storage.path)
+        with agent.override(
+            model=TestModel(custom_output_args={"results": []})
+        ):
+            return await real_extract_book(
+                book,
+                agent,
+                deps,
+                categories,
+                config,
+                storage,
+                progress,
+                on_observe,
+            )
+
+    with (
+        patch(
+            "lorebinders.workflow.extract_book", side_effect=cached_extraction
+        ),
+        patch(
+            "lorebinders.workflow.analyze_entities",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("lorebinders.workflow.summarize_binder", new_callable=AsyncMock),
+        patch("lorebinders.workflow.generate_pdf_report"),
+    ):
+        await build_binder(
+            run_config,
+            prompt_files=prompt_files,
+            on_observe=observations.append,
+        )
+        await build_binder(
+            run_config,
+            prompt_files=prompt_files,
+            on_observe=observations.append,
+        )
+        if changed in {
+            "default_prompt",
+            "analysis_prompt",
+            "summarization_prompt",
+            "alias_resolution_prompt",
+        }:
+            original = build_prompt_loader()
+
+            def revised_loader(
+                files: Mapping[str, Path] | None,
+            ) -> Callable[[str], str]:
+                def load(filename: str) -> str:
+                    return original(filename) + (
+                        " updated"
+                        if filename
+                        == (
+                            "extraction.txt"
+                            if changed == "default_prompt"
+                            else changed.removesuffix("_prompt") + ".txt"
+                        )
+                        else ""
+                    )
+
+                return load
+
+            monkeypatch.setattr(
+                "lorebinders.workflow.build_prompt_loader", revised_loader
+            )
+        elif changed == "override_prompt":
+            prompt_path.write_text("Updated prompt")
+        elif changed == "narrator":
+            run_config.narrator_config = models.NarratorConfig(
+                is_1st_person=True, name="Kalia"
+            )
+        elif changed == "model":
+            settings.extraction_model = "openrouter:test/new-model"
+        elif changed == "input":
+            run_config.books[0].path.write_text(
+                "Chapter 1\nA different manuscript."
+            )
+        elif changed == "traits":
+            run_config.custom_traits = {"Characters": ["Motivation"]}
+        elif changed == "categories":
+            run_config.custom_categories = ["Organizations"]
+        elif changed == "appearance":
+            run_config.appearance_tracking = "flat"
+        elif changed == "model_settings":
+            settings.max_output_tokens = 1234
+        elif changed == "wrapped_settings":
+            wrapped_temperature[0] = 0.7
+        output = await build_binder(
+            run_config,
+            prompt_files=prompt_files,
+            on_observe=observations.append,
+        )
+
+    assert visits[0] == visits[1]
+    assert visits[2] != visits[0]
+    assert (
+        sum(
+            event.type == models.ObservationType.AGENT_RUN_STARTED
+            for event in observations
+        )
+        == 2
+    )
+    assert output.name == "Test_Series_story_bible.pdf"
+    real_get_storage.cache_clear()
+
+
+def test_cache_fingerprint_accepts_stable_timeout_and_path_settings(
+    run_config: models.RunConfiguration,
+) -> None:
+    import httpx
+
+    from lorebinders.workflow import _cache_namespace
+
+    def loader(filename: str) -> str:
+        return "prompt"
+
+    first = _cache_namespace(
+        run_config,
+        Settings(),
+        loader,
+        [{"timeout": httpx.Timeout(30), "path": Path("/operator/path")}],
+    )
+    same = _cache_namespace(
+        run_config,
+        Settings(),
+        loader,
+        [{"timeout": httpx.Timeout(30), "path": Path("/operator/path")}],
+    )
+    changed = _cache_namespace(
+        run_config,
+        Settings(),
+        loader,
+        [{"timeout": httpx.Timeout(31), "path": Path("/operator/path")}],
+    )
+    assert first == same
+    assert first != changed
+
+
+def test_cache_fingerprint_does_not_reuse_unknown_setting_objects(
+    run_config: models.RunConfiguration,
+) -> None:
+    from lorebinders.workflow import _cache_namespace
+
+    def loader(filename: str) -> str:
+        return "prompt"
+
+    value = object()
+    first = _cache_namespace(
+        run_config, Settings(), loader, [{"unknown": value}]
+    )
+    second = _cache_namespace(
+        run_config, Settings(), loader, [{"unknown": value}]
+    )
+    assert first != second
