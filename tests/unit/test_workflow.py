@@ -252,8 +252,9 @@ async def test_build_binder_forwards_user_id(
 
     workspace_args, workspace_kwargs = fake_storage.set_workspace.call_args
     assert workspace_args[0] == "Test Author"
-    assert workspace_args[1].startswith("Test Series--cache-")
-    assert workspace_kwargs == {"user_id": "user_123"}
+    assert workspace_args[1] == "Test Series"
+    assert workspace_kwargs["user_id"] == "user_123"
+    assert len(workspace_kwargs["cache_namespace"]) == 64
 
 
 @pytest.mark.anyio
@@ -537,6 +538,7 @@ async def test_invalid_prompt_fails_before_agent_construction(
         "categories",
         "appearance",
         "model_settings",
+        "wrapped_settings",
     ],
 )
 async def test_workspace_cache_identity_tracks_effective_inputs(
@@ -557,6 +559,26 @@ async def test_workspace_cache_identity_tracks_effective_inputs(
         "lorebinders.storage.workspace.get_settings", lambda: settings
     )
     real_get_storage.cache_clear()
+    wrapped_temperature = [0.1]
+    if changed == "wrapped_settings":
+        from lorebinders.agent.factory import (
+            ConfiguredModel,
+            create_extraction_agent,
+        )
+
+        def configured_extraction(
+            settings: Settings,
+        ) -> Agent[models.AgentDeps, models.ExtractionResult]:
+            agent = create_extraction_agent(settings)
+            agent.model = ConfiguredModel(
+                TestModel(), {"temperature": wrapped_temperature[0]}
+            )
+            return agent
+
+        monkeypatch.setattr(
+            "lorebinders.workflow.create_extraction_agent",
+            configured_extraction,
+        )
     prompt_path = tmp_path / "override.txt"
     prompt_path.write_text("Original prompt")
     prompt_files = (
@@ -625,7 +647,14 @@ async def test_workspace_cache_identity_tracks_effective_inputs(
             ) -> Callable[[str], str]:
                 def load(filename: str) -> str:
                     return original(filename) + (
-                        " updated" if filename == "extraction.txt" else ""
+                        " updated"
+                        if filename
+                        == (
+                            "extraction.txt"
+                            if changed == "default_prompt"
+                            else changed.removesuffix("_prompt") + ".txt"
+                        )
+                        else ""
                     )
 
                 return load
@@ -653,6 +682,8 @@ async def test_workspace_cache_identity_tracks_effective_inputs(
             run_config.appearance_tracking = "flat"
         elif changed == "model_settings":
             settings.max_output_tokens = 1234
+        elif changed == "wrapped_settings":
+            wrapped_temperature[0] = 0.7
         output = await build_binder(
             run_config,
             prompt_files=prompt_files,
@@ -670,3 +701,53 @@ async def test_workspace_cache_identity_tracks_effective_inputs(
     )
     assert output.name == "Test_Series_story_bible.pdf"
     real_get_storage.cache_clear()
+
+
+def test_cache_fingerprint_accepts_stable_timeout_and_path_settings(
+    run_config: models.RunConfiguration,
+) -> None:
+    import httpx
+
+    from lorebinders.workflow import _cache_namespace
+
+    def loader(filename: str) -> str:
+        return "prompt"
+
+    first = _cache_namespace(
+        run_config,
+        Settings(),
+        loader,
+        [{"timeout": httpx.Timeout(30), "path": Path("/operator/path")}],
+    )
+    same = _cache_namespace(
+        run_config,
+        Settings(),
+        loader,
+        [{"timeout": httpx.Timeout(30), "path": Path("/operator/path")}],
+    )
+    changed = _cache_namespace(
+        run_config,
+        Settings(),
+        loader,
+        [{"timeout": httpx.Timeout(31), "path": Path("/operator/path")}],
+    )
+    assert first == same
+    assert first != changed
+
+
+def test_cache_fingerprint_does_not_reuse_unknown_setting_objects(
+    run_config: models.RunConfiguration,
+) -> None:
+    from lorebinders.workflow import _cache_namespace
+
+    def loader(filename: str) -> str:
+        return "prompt"
+
+    value = object()
+    first = _cache_namespace(
+        run_config, Settings(), loader, [{"unknown": value}]
+    )
+    second = _cache_namespace(
+        run_config, Settings(), loader, [{"unknown": value}]
+    )
+    assert first != second

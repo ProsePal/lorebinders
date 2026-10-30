@@ -25,6 +25,8 @@ def ensure_workspace(
     title: str,
     base_path: Path | None = None,
     user_id: str | None = None,
+    *,
+    cache_namespace: str | None = None,
 ) -> Path:
     """Create (if needed) and return the path to the book's workspace.
 
@@ -36,6 +38,7 @@ def ensure_workspace(
         title: The title of the book.
         base_path: Root directory for workspaces. Defaults to "work".
         user_id: Optional user ID for namespacing.
+        cache_namespace: Optional safe cache identity appended to the title.
 
     Returns:
         The Path to the book's workspace directory.
@@ -46,6 +49,15 @@ def ensure_workspace(
         else get_settings().workspace_base_path
     )
     safe_author = sanitize_filename(author)
+    if cache_namespace is not None:
+        if (
+            not cache_namespace
+            or sanitize_filename(cache_namespace) != cache_namespace
+        ):
+            raise ValueError(
+                "cache_namespace must be a nonempty safe identifier"
+            )
+        title = f"{title}--cache-{cache_namespace}"
     safe_title = sanitize_filename(title)
 
     if user_id:

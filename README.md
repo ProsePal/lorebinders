@@ -127,6 +127,14 @@ Identical inputs reuse cached extractions, profiles, and summaries; changed
 inputs use a separate workspace. Historical workspaces remain intact but are
 not reused by this cache-identity version, including for bundled defaults.
 The user/run prefix, human series title, and report filename remain unchanged.
+Custom storage providers must implement
+`set_workspace(author, title, user_id=None, *, cache_namespace=None)` and
+scope every extraction, profile, and summary cache key by that namespace.
+Ignoring it can reuse stale results. The engine passes the original title
+and namespace separately so providers can preserve their user/run prefix.
+Built-in filesystem and database providers support this contract. Known
+`httpx.Timeout` and path settings have stable identities; opaque or dynamic
+setting values conservatively disable cache reuse for that build.
 Existing entity normalization and deduplication behavior is preserved.
 
 ## Configuration

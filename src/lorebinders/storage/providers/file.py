@@ -91,7 +91,12 @@ class FilesystemStorage:
             raise RuntimeError("Workspace not set. Call set_workspace first.")
 
     def set_workspace(
-        self, author: str, title: str, user_id: str | None = None
+        self,
+        author: str,
+        title: str,
+        user_id: str | None = None,
+        *,
+        cache_namespace: str | None = None,
     ) -> None:
         """Set the workspace directories.
 
@@ -99,8 +104,11 @@ class FilesystemStorage:
             author: The name of the author.
             title: The title of the book.
             user_id: Optional user ID.
+            cache_namespace: Opaque identity scoping every cached stage.
         """
-        self._path = workspace.ensure_workspace(author, title, user_id=user_id)
+        self._path = workspace.ensure_workspace(
+            author, title, user_id=user_id, cache_namespace=cache_namespace
+        )
         self.extractions_dir = self._path / "extractions"
         self.profiles_dir = self._path / "profiles"
         self.summaries_dir = self._path / "summaries"

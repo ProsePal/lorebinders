@@ -4,12 +4,15 @@ import asyncio
 import hashlib
 import json
 import logging
+import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeAlias
 
+import httpx
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
+from pydantic_ai.settings import merge_model_settings
 
 from lorebinders import models
 from lorebinders.agent.analysis import analyze_entities
@@ -148,7 +151,17 @@ def _aggregate_to_binder(
     return binder
 
 
-def _cache_workspace_title(
+def _cache_json_default(value: object) -> object:
+    """Serialize known settings or disable reuse for opaque setting values."""
+    if isinstance(value, httpx.Timeout):
+        return {"type": "httpx.Timeout", "value": value.as_dict()}
+    if isinstance(value, Path):
+        return {"type": "path", "value": str(value)}
+    # An unknown object must not collapse into the identity of another value.
+    return {"type": "opaque", "nonce": uuid.uuid4().hex}
+
+
+def _cache_namespace(
     config: models.RunConfiguration,
     settings: Settings,
     prompt_loader: Callable[[str], str],
@@ -173,9 +186,14 @@ def _cache_workspace_title(
             stage: prompt_loader(f"{stage}.txt") for stage in PROMPT_STAGES
         },
     }
-    encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()
+    encoded = json.dumps(
+        identity,
+        sort_keys=True,
+        ensure_ascii=False,
+        default=_cache_json_default,
+    ).encode()
     digest = hashlib.sha256(encoded).hexdigest()
-    return f"{config.series_title}--cache-{digest}"
+    return digest
 
 
 async def build_binder(
@@ -233,16 +251,32 @@ async def build_binder(
             "name": agent.model.model_name
             if isinstance(agent.model, Model)
             else str(agent.model),
-            "settings": dict(agent.model_settings or {}),
+            "dynamic_settings": agent.model_settings
+            if callable(agent.model_settings)
+            else None,
+            "settings": dict(
+                merge_model_settings(
+                    agent.model.settings
+                    if isinstance(agent.model, Model)
+                    else None,
+                    agent.model_settings
+                    if isinstance(agent.model_settings, dict)
+                    else None,
+                )
+                or {}
+            ),
         }
         for agent in (ext_agent, ana_agent, sum_agent, ali_agent)
         if agent is not None
     ]
-    workspace_title = await asyncio.to_thread(
-        _cache_workspace_title, config, settings, prompt_loader, model_configs
+    cache_namespace = await asyncio.to_thread(
+        _cache_namespace, config, settings, prompt_loader, model_configs
     )
     storage.set_workspace(
-        config.author_name, workspace_title, user_id=config.user_id
+        config.author_name,
+        config.series_title,
+        user_id=config.user_id,
+        cache_namespace=cache_namespace,
     )
 
     all_profiles: list[models.EntityProfile] = []
