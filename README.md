@@ -114,12 +114,20 @@ snapshot loader for direct agent runs. It accepts filenames such as
 `extraction.txt`; hash its returned text encoded as UTF-8 to record the
 effective prompt identity for reproducibility.
 
-Entity cleanup preserves compound descriptive titles containing an `of`
-phrase. Distinct names containing such phrases are not merged by automatic
-substring, title, or plural matching, even when one contains the other;
-case-insensitive exact matches still merge. Evidence-based alias resolution
-can join those names later when enabled. Other historical name heuristics
-remain in place, so this is not a general semantic identity resolver.
+Prompt files and manuscript inputs must remain immutable while a build is
+starting. For coordinated updates, publish a new versioned directory and
+point the next build at it; the loader does not provide atomic multi-file
+publication. After loading, each effective prompt remains fixed for that run.
+Operators are responsible for fitting prompts plus manuscript text and
+requested output within the selected model's context budget.
+
+All builds use an internal cache workspace suffix derived from effective
+prompts, source bytes, narrator/run configuration, settings, and model names.
+Identical inputs reuse cached extractions, profiles, and summaries; changed
+inputs use a separate workspace. Historical workspaces remain intact but are
+not reused by this cache-identity version, including for bundled defaults.
+The user/run prefix, human series title, and report filename remain unchanged.
+Existing entity normalization and deduplication behavior is preserved.
 
 ## Configuration
 

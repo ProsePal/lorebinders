@@ -1,12 +1,15 @@
 """Core orchestration pipeline for LoreBinders."""
 
 import asyncio
+import hashlib
+import json
 import logging
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeAlias
 
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from lorebinders import models
 from lorebinders.agent.analysis import analyze_entities
@@ -18,7 +21,7 @@ from lorebinders.agent.factory import (
     create_summarization_agent,
 )
 from lorebinders.agent.summarization import summarize_binder
-from lorebinders.prompts import build_prompt_loader
+from lorebinders.prompts import PROMPT_STAGES, build_prompt_loader
 from lorebinders.refinement import refine_binder_async
 from lorebinders.refinement.cleaning import clean_traits
 from lorebinders.refinement.conversion import convert_to_text, ingest
@@ -145,6 +148,36 @@ def _aggregate_to_binder(
     return binder
 
 
+def _cache_workspace_title(
+    config: models.RunConfiguration,
+    settings: Settings,
+    prompt_loader: Callable[[str], str],
+    model_configs: list[dict[str, object]],
+) -> str:
+    """Namespace every cached stage by the effective run inputs.
+
+    Source files must remain immutable during a run, just like operator
+    prompt files. Legacy workspaces remain intact but are not reused.
+    """
+    sources = []
+    for book in config.books:
+        with book.path.open("rb") as source:
+            sources.append(hashlib.file_digest(source, "sha256").hexdigest())
+    identity = {
+        "version": 1,
+        "config": config.model_dump(mode="json"),
+        "settings": settings.model_dump(mode="json"),
+        "sources": sources,
+        "models": model_configs,
+        "prompts": {
+            stage: prompt_loader(f"{stage}.txt") for stage in PROMPT_STAGES
+        },
+    }
+    encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
+    return f"{config.series_title}--cache-{digest}"
+
+
 async def build_binder(
     config: models.RunConfiguration,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
@@ -195,8 +228,21 @@ async def build_binder(
 
     traits = merge_traits(settings, config)
     storage = get_storage(provider)
+    model_configs: list[dict[str, object]] = [
+        {
+            "name": agent.model.model_name
+            if isinstance(agent.model, Model)
+            else str(agent.model),
+            "settings": dict(agent.model_settings or {}),
+        }
+        for agent in (ext_agent, ana_agent, sum_agent, ali_agent)
+        if agent is not None
+    ]
+    workspace_title = await asyncio.to_thread(
+        _cache_workspace_title, config, settings, prompt_loader, model_configs
+    )
     storage.set_workspace(
-        config.author_name, config.series_title, user_id=config.user_id
+        config.author_name, workspace_title, user_id=config.user_id
     )
 
     all_profiles: list[models.EntityProfile] = []
