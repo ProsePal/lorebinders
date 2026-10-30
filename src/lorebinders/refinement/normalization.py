@@ -127,9 +127,6 @@ def remove_titles(name: str) -> str:
         return name
     name_split = name.split(" ")
     first_word = name_split[0].lower().rstrip(".")
-    # A title can be the identifying noun of a descriptive name.
-    if "of" in (word.lower() for word in name_split[1:-1]):
-        return name
     if first_word in TITLES and name.lower() not in TITLES:
         return " ".join(name_split[1:])
     return name

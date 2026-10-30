@@ -86,18 +86,3 @@ def test_merge_values(
 ) -> None:
     merged_dict = merge_values(value1, value2)
     assert merged_dict == expected
-
-
-@pytest.mark.parametrize(
-    "name",
-    ["Captain of the Royal Guard", "Queen of Hearts", "Lady of the Lake"],
-)
-def test_remove_titles_preserves_descriptive_identity(name: str) -> None:
-    assert remove_titles(name) == name
-
-
-def test_remove_titles_preserves_compound_descriptive_title() -> None:
-    assert (
-        remove_titles("Lord Commander of the Night Watch")
-        == "Lord Commander of the Night Watch"
-    )
