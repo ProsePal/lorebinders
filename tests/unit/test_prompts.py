@@ -51,3 +51,17 @@ def test_unknown_stage_is_rejected(tmp_path: Path) -> None:
 def test_loader_rejects_arbitrary_paths() -> None:
     with pytest.raises(ValueError, match="Unknown prompt"):
         build_prompt_loader()("../secret.txt")
+
+
+def test_prompt_byte_budget_accepts_boundary_and_rejects_oversize(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "prompt.txt"
+    path.write_bytes("é".encode() * 8192)
+    assert (
+        build_prompt_loader({"extraction": path})("extraction.txt")
+        == "é" * 8192
+    )
+    path.write_bytes("é".encode() * 8193)
+    with pytest.raises(ValueError, match="16384"):
+        build_prompt_loader({"extraction": path})

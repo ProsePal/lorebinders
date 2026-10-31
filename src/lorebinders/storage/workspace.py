@@ -49,16 +49,7 @@ def ensure_workspace(
         else get_settings().workspace_base_path
     )
     safe_author = sanitize_filename(author)
-    if cache_namespace is not None:
-        if (
-            not cache_namespace
-            or sanitize_filename(cache_namespace) != cache_namespace
-        ):
-            raise ValueError(
-                "cache_namespace must be a nonempty safe identifier"
-            )
-        title = f"{title}--cache-{cache_namespace}"
-    safe_title = sanitize_filename(title)
+    safe_title = _workspace_title(title, cache_namespace)
 
     if user_id:
         safe_user_id = sanitize_filename(user_id)
@@ -69,11 +60,27 @@ def ensure_workspace(
     return path
 
 
+def _workspace_title(title: str, cache_namespace: str | None) -> str:
+    """Return the shared creation/cleanup title with a validated namespace."""
+    if cache_namespace is not None:
+        if (
+            not cache_namespace
+            or sanitize_filename(cache_namespace) != cache_namespace
+        ):
+            raise ValueError(
+                "cache_namespace must be a nonempty safe identifier"
+            )
+        title = f"{title}--cache-{cache_namespace}"
+    return sanitize_filename(title)
+
+
 def clean_workspace(
     author: str,
     title: str,
     base_path: Path | None = None,
     user_id: str | None = None,
+    *,
+    cache_namespace: str | None = None,
 ) -> None:
     """Remove the workspace directory for a specific book.
 
@@ -82,6 +89,7 @@ def clean_workspace(
         title: The title of the book.
         base_path: Root directory for workspaces. Defaults to "work".
         user_id: Optional user ID for namespacing.
+        cache_namespace: Optional cache identity selecting one workspace.
 
     Raises:
         ValueError: If the resolved path escapes the workspace boundary.
@@ -92,7 +100,7 @@ def clean_workspace(
         else get_settings().workspace_base_path
     )
     safe_author = sanitize_filename(author)
-    safe_title = sanitize_filename(title)
+    safe_title = _workspace_title(title, cache_namespace)
 
     if user_id:
         safe_user_id = sanitize_filename(user_id)

@@ -101,7 +101,10 @@ uv run --extra cli lorebinders-cli --book manuscript.epub \
 
 The other options are `--summarization-prompt` and
 `--alias-resolution-prompt`. Unspecified stages keep their bundled prompts.
-Every configured file must be readable UTF-8 and contain non-whitespace text;
+Every configured file must be readable UTF-8, contain non-whitespace text,
+and fit the 16,384-byte limit per stage. Overrides are read with a bounded
+16,385-byte read and rejected before decoding if oversized. This input-size
+budget also applies to bundled prompts and is not a model context guarantee;
 all files are validated and snapshotted before any model call, even when a
 stage is disabled. These paths are trusted local operator inputs and should
 not be accepted directly from public API clients.
@@ -123,8 +126,13 @@ requested output within the selected model's context budget.
 
 All builds use an internal cache workspace suffix derived from effective
 prompts, source bytes, narrator/run configuration, settings, and model names.
-Identical inputs reuse cached extractions, profiles, and summaries; changed
-inputs use a separate workspace. Historical workspaces remain intact but are
+Identical inputs with engine-created agents reuse cached extractions,
+profiles, and summaries; changed inputs use a separate workspace. Injecting
+any caller-supplied agent disables cache reuse for the entire build, including
+agents with static or dynamic prompts, because their complete behavior is
+not represented by the bundled prompt loader. Each build constructs its own
+provider instance, so concurrent builds do not share mutable workspace state.
+Historical workspaces remain intact but are
 not reused by this cache-identity version, including for bundled defaults.
 The user/run prefix, human series title, and report filename remain unchanged.
 Custom storage providers must implement
@@ -136,6 +144,16 @@ Built-in filesystem and database providers support this contract. Known
 `httpx.Timeout` and path settings have stable identities; opaque or dynamic
 setting values conservatively disable cache reuse for that build.
 Existing entity normalization and deduplication behavior is preserved.
+The extraction instructions accept names longer than two words within the
+existing 200-character limit. Leading titles can still be stripped and
+contained location names can still be merged downstream; these changes do
+not promise distinct final entities for those cases.
+
+Operators can remove one local cache workspace with
+`clean_workspace(author, title, user_id=user_id, cache_namespace=namespace)`
+from `lorebinders.storage.workspace`. Omitting the namespace cleans only the
+legacy unsuffixed workspace. Namespace creation and cleanup share validation
+and title suffix rules; other namespace directories remain intact.
 
 ## Configuration
 

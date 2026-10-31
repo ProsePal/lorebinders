@@ -28,11 +28,11 @@ allusive_figure:
 
 ## Rules
 
-- **Entity Names**: Use concise, unambiguous names grounded in the text. Keep longer names, titles, and descriptive phrases when needed to identify an entity; there is no word-count limit. Do not invent names for unnamed entities.
+- **Entity Names**: Use concise, unambiguous names grounded in the text, no more than 200 characters per name. Names may exceed two words when necessary for identity, within that character limit. Do not invent names for unnamed entities.
 - **Entity Structure**: Each extracted entity has a `name` (the entity string) and a `presence_type` (one of the three values above).
 - **Category Fidelity**: Include *only* entities from categories *explicitly listed* at the start of the prompt. Omit all other potential entities, even if the text strongly implies they fit.
-- **Character Entities**: Use names as given in the text. Omit incidental honorifics when the remaining name identifies the character unambiguously, but preserve titles, suffixes, or descriptive identifiers needed for identity (e.g., "Captain of the Royal Guard"). Include all unique characters; avoid duplicate aliases unless explicitly noted.
-- **Location Entities**: Keep the concise identifying location name, including meaningful modifiers, possessives, or prepositional phrases (e.g., "Royal Palace Gardens", "Tower of the Dawn", "Kalia's childhood home"). Omit only incidental surrounding prose; do not strip words that distinguish one location from another.
+- **Character Entities**: Use names as given in the text. Omit incidental honorifics when the remaining name identifies the character unambiguously. Prefer names or descriptive identifiers that remain meaningful without a leading honorific (e.g., "Keeper of the Dawn Archive"). Include all unique characters; avoid duplicate aliases unless explicitly noted.
+- **Location Entities**: At extraction, retain meaningful modifiers and possessives in concise names (e.g., "Eastern Courtyard" and "Western Courtyard", or "Kalia's childhood home"). Omit incidental surrounding prose. Later normalization and alias deduplication apply separately; this extraction instruction does not guarantee that every descriptive distinction survives those stages.
 - **Additional Categories** (e.g., company, date, organization): Apply tailored rules *exactly* (e.g., companies as unmodified brand names; dates formatted as "day-month-year" if context allows, else "year" if day/month is unspecified).
 - **Non-character categories** (locations, objects, dates, organizations): Default `presence_type` to `literal_entity` unless the entity is invoked purely as an allusion or reference.
 - **When uncertain**: If the entity is physically in the scene → `literal_entity`. If it is a story-world entity only talked about → `mentioned_entity`. If it is invoked for rhetorical effect with no story-world presence → `allusive_figure`.

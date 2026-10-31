@@ -51,3 +51,32 @@ def test_sanitize_filename() -> None:
     assert sanitize_filename("Space Valid") == "Space_Valid"
     assert sanitize_filename("Bad/Chars\\Here") == "Bad_Chars_Here"
     assert sanitize_filename("..") == "_"
+
+
+def test_cleanup_removes_only_selected_namespace(workspace_base: Path) -> None:
+    legacy = ensure_workspace("Author", "Series", workspace_base, "user")
+    first = ensure_workspace(
+        "Author", "Series", workspace_base, "user", cache_namespace="first"
+    )
+    second = ensure_workspace(
+        "Author", "Series", workspace_base, "user", cache_namespace="second"
+    )
+    clean_workspace(
+        "Author", "Series", workspace_base, "user", cache_namespace="first"
+    )
+    assert not first.exists()
+    assert second.exists()
+    assert legacy.exists()
+    clean_workspace("Author", "Series", workspace_base, "user")
+    assert not legacy.exists()
+    assert second.exists()
+
+
+@pytest.mark.parametrize("namespace", ["", "../bad", "bad/path"])
+def test_cleanup_rejects_invalid_namespace(
+    workspace_base: Path, namespace: str
+) -> None:
+    with pytest.raises(ValueError, match="cache_namespace"):
+        clean_workspace(
+            "Author", "Series", workspace_base, cache_namespace=namespace
+        )

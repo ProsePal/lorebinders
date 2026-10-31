@@ -34,7 +34,6 @@ from lorebinders.settings import Settings, get_settings
 from lorebinders.storage import (
     FilesystemStorage,
     StorageProvider,
-    get_storage,
     sanitize_filename,
 )
 
@@ -157,7 +156,7 @@ def _cache_json_default(value: object) -> object:
         return {"type": "httpx.Timeout", "value": value.as_dict()}
     if isinstance(value, Path):
         return {"type": "path", "value": str(value)}
-    # An unknown object must not collapse into the identity of another value.
+
     return {"type": "opaque", "nonce": uuid.uuid4().hex}
 
 
@@ -214,13 +213,14 @@ async def build_binder(
         config: The run configuration.
         progress: Optional progress callback.
         on_observe: Optional observation callback.
-        extraction_agent: Optional agent override.
-        analysis_agent: Optional agent override.
-        summarization_agent: Optional agent override.
+        extraction_agent: Optional agent override. Injecting an agent disables
+            cache reuse for the entire build.
+        analysis_agent: Optional agent override, disabling cache reuse.
+        summarization_agent: Optional agent override, disabling cache reuse.
         alias_agent: Optional agent override for alias resolution. Ignored
             when alias resolution is disabled in settings.
         prompt_files: Trusted operator stage-to-file prompt overrides.
-        provider: Storage provider class.
+        provider: Storage provider class, instantiated separately per build.
 
     Returns:
         The Path to the generated story bible report.
@@ -245,7 +245,7 @@ async def build_binder(
     )
 
     traits = merge_traits(settings, config)
-    storage = get_storage(provider)
+    storage = provider()
     model_configs: list[dict[str, object]] = [
         {
             "name": agent.model.model_name
@@ -269,6 +269,16 @@ async def build_binder(
         for agent in (ext_agent, ana_agent, sum_agent, ali_agent)
         if agent is not None
     ]
+    if any(
+        agent is not None
+        for agent in (
+            extraction_agent,
+            analysis_agent,
+            summarization_agent,
+            alias_agent,
+        )
+    ):
+        model_configs.append({"injected_agents_nonce": uuid.uuid4().hex})
     cache_namespace = await asyncio.to_thread(
         _cache_namespace, config, settings, prompt_loader, model_configs
     )

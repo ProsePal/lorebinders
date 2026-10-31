@@ -1,5 +1,6 @@
 """Unit tests for the workflow module."""
 
+import asyncio
 import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -192,9 +193,10 @@ async def test_build_binder_orchestration(
             new_callable=AsyncMock,
         ),
         patch("lorebinders.workflow.generate_pdf_report") as mock_report,
-        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
     ):
-        result = await build_binder(run_config)
+        result = await build_binder(
+            run_config, provider=MagicMock(return_value=fake_storage)
+        )
 
     mock_convert.assert_called_once_with(run_config.books[0].path)
     mock_ingest.assert_called_once_with(
@@ -246,9 +248,10 @@ async def test_build_binder_forwards_user_id(
         ),
         patch("lorebinders.workflow.summarize_binder", new_callable=AsyncMock),
         patch("lorebinders.workflow.generate_pdf_report"),
-        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
     ):
-        await build_binder(config)
+        await build_binder(
+            config, provider=MagicMock(return_value=fake_storage)
+        )
 
     workspace_args, workspace_kwargs = fake_storage.set_workspace.call_args
     assert workspace_args[0] == "Test Author"
@@ -347,24 +350,19 @@ async def test_build_binder_accumulates_stage_failures(
             "lorebinders.workflow.summarize_binder", side_effect=mock_summarize
         ),
         patch("lorebinders.workflow.generate_pdf_report") as mock_report,
-        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
     ):
-        await build_binder(config)
+        await build_binder(
+            config, provider=MagicMock(return_value=fake_storage)
+        )
 
-    # Verify that the PDF generator was called with accumulated counts
     binder = mock_report.call_args.args[0]
 
-    # 1 book fails (1 error), 1 book clean (0 errors) -> 1 failed extraction
-    # Total count should be 5 + 5 = 10
     assert binder.stage_failures["extraction"]["failed_count"] == 1
     assert binder.stage_failures["extraction"]["total_count"] == 10
 
-    # 1 book fails (2 errors), 1 book clean (0 errors) -> 2 failed analyses
-    # Total count should be 10 + 10 = 20
     assert binder.stage_failures["analysis"]["failed_count"] == 2
     assert binder.stage_failures["analysis"]["total_count"] == 20
 
-    # 1 summarize_binder call * 3 failed summarizations = 3
     assert binder.stage_failures["summarization"]["failed_count"] == 3
     assert binder.stage_failures["summarization"]["total_count"] == 15
 
@@ -456,13 +454,13 @@ async def test_build_binder_clean_run_no_partial_results(
         patch(
             "lorebinders.workflow.summarize_binder", side_effect=mock_summarize
         ),
-        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
     ):
-        result_pdf_path = await build_binder(config)
+        result_pdf_path = await build_binder(
+            config, provider=MagicMock(return_value=fake_storage)
+        )
 
     assert result_pdf_path.exists()
 
-    # Verify the generated PDF has NO partial-results note
     reader = PdfReader(result_pdf_path)
     text = ""
     for page in reader.pages:
@@ -751,3 +749,117 @@ def test_cache_fingerprint_does_not_reuse_unknown_setting_objects(
         run_config, Settings(), loader, [{"unknown": value}]
     )
     assert first != second
+
+
+@pytest.mark.anyio
+async def test_concurrent_builds_keep_independent_storage(
+    run_config: models.RunConfiguration,
+    temp_workspace: Path,
+) -> None:
+    ready = asyncio.Event()
+    visits: list[tuple[StorageProvider, Path, str]] = []
+
+    async def concurrent_extraction(
+        book: models.Book,
+        agent: Any,
+        deps: models.AgentDeps,
+        categories: list[str],
+        config: models.RunConfiguration,
+        storage: StorageProvider,
+        *args: Any,
+    ) -> dict[int, dict[str, list[models.ExtractedEntity]]]:
+        user_id = str(config.user_id)
+        visits.append((storage, storage.path, user_id))
+        if len(visits) == 2:
+            ready.set()
+        await ready.wait()
+        storage.save_extraction(1, {user_id: []}, book.title)
+        return {}
+
+    with (
+        patch(
+            "lorebinders.workflow.extract_book",
+            side_effect=concurrent_extraction,
+        ),
+        patch(
+            "lorebinders.workflow.analyze_entities",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("lorebinders.workflow.summarize_binder", new_callable=AsyncMock),
+        patch("lorebinders.workflow.generate_pdf_report"),
+    ):
+        outputs = await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    build_binder(
+                        run_config.model_copy(update={"user_id": user_id})
+                    )
+                    for user_id in ("first-user", "second-user")
+                )
+            ),
+            timeout=5,
+        )
+    assert visits[0][0] is not visits[1][0]
+    for storage, original_path, user_id in visits:
+        assert storage.path == original_path
+        assert user_id in original_path.parts
+        assert storage.load_extraction(1, "Test Book") == {user_id: []}
+    assert outputs[0].parent != outputs[1].parent
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("dynamic", [False, True])
+async def test_injected_agent_prompts_disable_cache_reuse(
+    run_config: models.RunConfiguration,
+    temp_workspace: Path,
+    dynamic: bool,
+) -> None:
+    text = ["First prompt"]
+
+    def make_agent() -> Agent[models.AgentDeps, models.ExtractionResult]:
+        agent = Agent(
+            TestModel(custom_output_args={"results": []}),
+            deps_type=models.AgentDeps,
+            output_type=models.ExtractionResult,
+            system_prompt=() if dynamic else text[0],
+        )
+        if dynamic:
+
+            @agent.system_prompt
+            def dynamic_prompt() -> str:
+                return text[0]
+
+        return agent
+
+    observations: list[models.ObservationEvent] = []
+    with (
+        patch(
+            "lorebinders.workflow.analyze_entities",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("lorebinders.workflow.summarize_binder", new_callable=AsyncMock),
+        patch("lorebinders.workflow.generate_pdf_report"),
+    ):
+        agent = make_agent()
+        first = await build_binder(
+            run_config, extraction_agent=agent, on_observe=observations.append
+        )
+        same = await build_binder(
+            run_config, extraction_agent=agent, on_observe=observations.append
+        )
+        text[0] = "Updated prompt"
+        changed = await build_binder(
+            run_config,
+            extraction_agent=agent if dynamic else make_agent(),
+            on_observe=observations.append,
+        )
+    assert len({first.parent, same.parent, changed.parent}) == 3
+    assert (
+        sum(
+            event.type == models.ObservationType.AGENT_RUN_STARTED
+            for event in observations
+        )
+        == 3
+    )
