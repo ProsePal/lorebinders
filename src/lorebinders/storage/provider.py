@@ -8,14 +8,24 @@ class StorageProvider(Protocol):
     """Protocol for LoreBinders storage backends."""
 
     def set_workspace(
-        self, author: str, title: str, user_id: str | None = None
+        self,
+        author: str,
+        title: str,
+        user_id: str | None = None,
+        *,
+        cache_namespace: str | None = None,
     ) -> None:
-        """Set the workspace context.
+        """Set the workspace context and isolate all cached stages.
+
+        Implementations must include cache_namespace in every cached
+        extraction, profile, and summary key. They must not silently ignore
+        a supplied namespace, including when using remote object storage.
 
         Args:
             author: The name of the book author.
             title: The title of the book.
             user_id: Optional user ID for the workspace.
+            cache_namespace: Opaque identity scoping every cached stage.
         """
         ...
 

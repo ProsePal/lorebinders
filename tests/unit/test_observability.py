@@ -78,7 +78,6 @@ async def test_build_binder_emits_both_callbacks_with_agents(
         ),
         patch("lorebinders.workflow.ingest", return_value=fake_book),
         patch("lorebinders.workflow.generate_pdf_report"),
-        patch("lorebinders.workflow.get_storage", return_value=fake_storage),
     ):
         await build_binder(
             run_config,
@@ -87,6 +86,7 @@ async def test_build_binder_emits_both_callbacks_with_agents(
             extraction_agent=ext_agent,
             analysis_agent=ana_agent,
             summarization_agent=sum_agent,
+            provider=MagicMock(return_value=fake_storage),
         )
 
     obs_stages = {o.stage for o in observations}

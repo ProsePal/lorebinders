@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from pydantic_ai import Agent
@@ -23,6 +23,8 @@ def run(
         Agent[models.AgentDeps, models.SummarizerResult] | None
     ) = None,
     provider: type[StorageProvider] = FilesystemStorage,
+    *,
+    prompt_files: Mapping[str, Path] | None = None,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
 
@@ -34,6 +36,7 @@ def run(
         analysis_agent: Optional agent override.
         summarization_agent: Optional agent override.
         provider: Storage provider class to use for persistence.
+        prompt_files: Trusted operator stage-to-file prompt overrides.
 
     Returns:
         The path to the generated PDF report.
@@ -47,5 +50,6 @@ def run(
             analysis_agent=analysis_agent,
             summarization_agent=summarization_agent,
             provider=provider,
+            prompt_files=prompt_files,
         )
     )

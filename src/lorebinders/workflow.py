@@ -1,12 +1,18 @@
 """Core orchestration pipeline for LoreBinders."""
 
 import asyncio
+import hashlib
+import json
 import logging
-from collections.abc import Callable
+import uuid
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeAlias
 
+import httpx
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
+from pydantic_ai.settings import merge_model_settings
 
 from lorebinders import models
 from lorebinders.agent.analysis import analyze_entities
@@ -16,9 +22,9 @@ from lorebinders.agent.factory import (
     create_analysis_agent,
     create_extraction_agent,
     create_summarization_agent,
-    load_prompt_from_assets,
 )
 from lorebinders.agent.summarization import summarize_binder
+from lorebinders.prompts import PROMPT_STAGES, build_prompt_loader
 from lorebinders.refinement import refine_binder_async
 from lorebinders.refinement.cleaning import clean_traits
 from lorebinders.refinement.conversion import convert_to_text, ingest
@@ -28,7 +34,6 @@ from lorebinders.settings import Settings, get_settings
 from lorebinders.storage import (
     FilesystemStorage,
     StorageProvider,
-    get_storage,
     sanitize_filename,
 )
 
@@ -145,6 +150,51 @@ def _aggregate_to_binder(
     return binder
 
 
+def _cache_json_default(value: object) -> object:
+    """Serialize known settings or disable reuse for opaque setting values."""
+    if isinstance(value, httpx.Timeout):
+        return {"type": "httpx.Timeout", "value": value.as_dict()}
+    if isinstance(value, Path):
+        return {"type": "path", "value": str(value)}
+
+    return {"type": "opaque", "nonce": uuid.uuid4().hex}
+
+
+def _cache_namespace(
+    config: models.RunConfiguration,
+    settings: Settings,
+    prompt_loader: Callable[[str], str],
+    model_configs: list[dict[str, object]],
+) -> str:
+    """Namespace every cached stage by the effective run inputs.
+
+    Source files must remain immutable during a run, just like operator
+    prompt files. Legacy workspaces remain intact but are not reused.
+    """
+    sources = []
+    for book in config.books:
+        with book.path.open("rb") as source:
+            sources.append(hashlib.file_digest(source, "sha256").hexdigest())
+    identity = {
+        "version": 1,
+        "config": config.model_dump(mode="json"),
+        "settings": settings.model_dump(mode="json"),
+        "sources": sources,
+        "models": model_configs,
+        "prompts": {
+            stage: prompt_loader(f"{stage}.txt") for stage in PROMPT_STAGES
+        },
+    }
+    encoded = json.dumps(
+        identity,
+        sort_keys=True,
+        ensure_ascii=False,
+        default=_cache_json_default,
+    ).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
+    return digest
+
+
 async def build_binder(
     config: models.RunConfiguration,
     progress: Callable[[models.ProgressUpdate], None] | None = None,
@@ -154,6 +204,8 @@ async def build_binder(
     summarization_agent: _SumAgent | None = None,
     alias_agent: _AliasAgent | None = None,
     provider: type[StorageProvider] = FilesystemStorage,
+    *,
+    prompt_files: Mapping[str, Path] | None = None,
 ) -> Path:
     """Execute the LoreBinders build pipeline.
 
@@ -161,22 +213,25 @@ async def build_binder(
         config: The run configuration.
         progress: Optional progress callback.
         on_observe: Optional observation callback.
-        extraction_agent: Optional agent override.
-        analysis_agent: Optional agent override.
-        summarization_agent: Optional agent override.
+        extraction_agent: Optional agent override. Injecting an agent disables
+            cache reuse for the entire build.
+        analysis_agent: Optional agent override, disabling cache reuse.
+        summarization_agent: Optional agent override, disabling cache reuse.
         alias_agent: Optional agent override for alias resolution. Ignored
             when alias resolution is disabled in settings.
-        provider: Storage provider class.
+        prompt_files: Trusted operator stage-to-file prompt overrides.
+        provider: Storage provider class, instantiated separately per build.
 
     Returns:
         The Path to the generated story bible report.
     """
+    prompt_loader = build_prompt_loader(prompt_files)
     settings = get_settings()
     from lorebinders.agent.spend import Spend
 
     deps = models.AgentDeps(
         settings=settings,
-        prompt_loader=load_prompt_from_assets,
+        prompt_loader=prompt_loader,
         spend=Spend(limit=settings.spend_ceiling),
     )
 
@@ -190,9 +245,48 @@ async def build_binder(
     )
 
     traits = merge_traits(settings, config)
-    storage = get_storage(provider)
+    storage = provider()
+    model_configs: list[dict[str, object]] = [
+        {
+            "name": agent.model.model_name
+            if isinstance(agent.model, Model)
+            else str(agent.model),
+            "dynamic_settings": agent.model_settings
+            if callable(agent.model_settings)
+            else None,
+            "settings": dict(
+                merge_model_settings(
+                    agent.model.settings
+                    if isinstance(agent.model, Model)
+                    else None,
+                    agent.model_settings
+                    if isinstance(agent.model_settings, dict)
+                    else None,
+                )
+                or {}
+            ),
+        }
+        for agent in (ext_agent, ana_agent, sum_agent, ali_agent)
+        if agent is not None
+    ]
+    if any(
+        agent is not None
+        for agent in (
+            extraction_agent,
+            analysis_agent,
+            summarization_agent,
+            alias_agent,
+        )
+    ):
+        model_configs.append({"injected_agents_nonce": uuid.uuid4().hex})
+    cache_namespace = await asyncio.to_thread(
+        _cache_namespace, config, settings, prompt_loader, model_configs
+    )
     storage.set_workspace(
-        config.author_name, config.series_title, user_id=config.user_id
+        config.author_name,
+        config.series_title,
+        user_id=config.user_id,
+        cache_namespace=cache_namespace,
     )
 
     all_profiles: list[models.EntityProfile] = []

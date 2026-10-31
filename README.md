@@ -88,6 +88,73 @@ uv run lorebinders-cli path/to/your/book.epub \
 - `--log-file`: Path to save execution logs.
 - `--verbose`: Enable verbose output for debugging.
 
+### Runtime prompt files
+
+Trusted operators can override any stage without replacing bundled assets:
+
+```bash
+uv run --extra cli lorebinders-cli --book manuscript.epub \
+    --author "Author Name" --series-title "Series Title" \
+    --extraction-prompt prompts/extraction.txt \
+    --analysis-prompt prompts/analysis.txt
+```
+
+The other options are `--summarization-prompt` and
+`--alias-resolution-prompt`. Unspecified stages keep their bundled prompts.
+Every configured file must be readable UTF-8, contain non-whitespace text,
+and fit the 16,384-byte limit per stage. Overrides are read with a bounded
+16,385-byte read and rejected before decoding if oversized. This input-size
+budget also applies to bundled prompts and is not a model context guarantee;
+all files are validated and snapshotted before any model call, even when a
+stage is disabled. These paths are trusted local operator inputs and should
+not be accepted directly from public API clients.
+
+Python callers can pass `prompt_files={"extraction": Path("prompt.txt")}`
+to `lorebinders.run` or `lorebinders.workflow.build_binder`. Accepted keys are
+`extraction`, `analysis`, `summarization`, and `alias_resolution`.
+`lorebinders.prompts.build_prompt_loader(prompt_files)` exposes the same
+snapshot loader for direct agent runs. It accepts filenames such as
+`extraction.txt`; hash its returned text encoded as UTF-8 to record the
+effective prompt identity for reproducibility.
+
+Prompt files and manuscript inputs must remain immutable while a build is
+starting. For coordinated updates, publish a new versioned directory and
+point the next build at it; the loader does not provide atomic multi-file
+publication. After loading, each effective prompt remains fixed for that run.
+Operators are responsible for fitting prompts plus manuscript text and
+requested output within the selected model's context budget.
+
+All builds use an internal cache workspace suffix derived from effective
+prompts, source bytes, narrator/run configuration, settings, and model names.
+Identical inputs with engine-created agents reuse cached extractions,
+profiles, and summaries; changed inputs use a separate workspace. Injecting
+any caller-supplied agent disables cache reuse for the entire build, including
+agents with static or dynamic prompts, because their complete behavior is
+not represented by the bundled prompt loader. Each build constructs its own
+provider instance, so concurrent builds do not share mutable workspace state.
+Historical workspaces remain intact but are
+not reused by this cache-identity version, including for bundled defaults.
+The user/run prefix, human series title, and report filename remain unchanged.
+Custom storage providers must implement
+`set_workspace(author, title, user_id=None, *, cache_namespace=None)` and
+scope every extraction, profile, and summary cache key by that namespace.
+Ignoring it can reuse stale results. The engine passes the original title
+and namespace separately so providers can preserve their user/run prefix.
+Built-in filesystem and database providers support this contract. Known
+`httpx.Timeout` and path settings have stable identities; opaque or dynamic
+setting values conservatively disable cache reuse for that build.
+Existing entity normalization and deduplication behavior is preserved.
+The extraction instructions accept names longer than two words within the
+existing 200-character limit. Leading titles can still be stripped and
+contained location names can still be merged downstream; these changes do
+not promise distinct final entities for those cases.
+
+Operators can remove one local cache workspace with
+`clean_workspace(author, title, user_id=user_id, cache_namespace=namespace)`
+from `lorebinders.storage.workspace`. Omitting the namespace cleans only the
+legacy unsuffixed workspace. Namespace creation and cleanup share validation
+and title suffix rules; other namespace directories remain intact.
+
 ## Configuration
 
 LoreBinders uses environment variables for configuration. You can set these in
