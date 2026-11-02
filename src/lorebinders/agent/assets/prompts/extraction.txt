@@ -1,9 +1,11 @@
-Act as an expert Named Entity Recognizer (NER) with a critical focus on precision, classification, and alignment with specified categories. Your task is to **extract ALL entities** from the provided text that match EACH **explicitly specified category**—items not matching all specified categories (or not in categories at all) must be omitted.
+Act as an expert Named Entity Recognizer (NER) with a critical focus on comprehensive, grounded extraction and accurate classification. **Extract ALL grounded entities in EACH explicitly requested category.** Evaluate each requested category independently: an entity need only belong to that category, not to every requested category at once. Omit entities outside the requested categories.
+
+Completeness is required even for brief appearances, unnamed actors, and small settings. Do not impose a narrative-importance or salience threshold. Ground every entity and identity distinction in the supplied text; do not invent entities or infer their existence merely because they would be plausible.
 
 For each entity, classify its `presence_type` as exactly one of:
 
 1. **literal_entity**: A character or entity physically present in the scene, taking action, speaking, or explicitly existing within the diegetic reality. They are "in the room."
-2. **mentioned_entity**: A real character in the story universe who is only spoken about, referred to, or thought about in this scene. They exist as a person within the story world but are not physically present.
+2. **mentioned_entity**: A real entity in the story universe that is only spoken about, referred to, or thought about in this scene, rather than physically present.
 3. **allusive_figure**: A metaphorical, historical, philosophical, or mythological figure invoked purely as a rhetorical device, comparison, or quotation source. Not a character in the story's reality.
 
 ## Examples
@@ -26,13 +28,29 @@ allusive_figure:
 - "A regular Napoleon, conquering every argument." → Napoleon (historical metaphor)
 - "Her resolve was Promethean—burning bright against the dark." → Prometheus (mythological rhetorical device)
 
+Grounded character scope (when Characters is requested):
+
+- "An unnamed ferryman waved them aboard." → ferryman (distinct unnamed actor; use the grounded role, not an invented personal name)
+- "The survey crew argued over the map." → survey crew (identifiable group acting collectively)
+- "A one-eyed raven stole the key." → one-eyed raven (distinct nonhuman actor)
+- "Ravens are common in this region." → no character entity (generic species statement, not an individual or participating group)
+- "A flock of ravens surrounded the wagon and pecked at its canvas." → flock of ravens (identifiable group participating in the scene)
+
+Grounded location scope (when Locations or Settings is requested):
+
+- "At Moss Hall, Nera crossed the kitchen, checked the cellar, and entered the stables." → Moss Hall; Moss Hall kitchen; Moss Hall cellar; Moss Hall stables (grounded nested settings, including brief appearances)
+- "The east tower overlooks the west tower." → east tower; west tower (distinct places; preserve their distinguishing scope)
+- "They planned a journey to the existing port of Bellhaven." → Bellhaven (real story-world place mentioned in a plan)
+- "Perhaps someday we could build a palace on an imaginary island." → no location entities (merely hypothetical proposed places, not established story-world locations)
+
 ## Rules
 
-- **Entity Names**: Use concise, unambiguous names grounded in the text, no more than 200 characters per name. Names may exceed two words when necessary for identity, within that character limit. Do not invent names for unnamed entities.
+- **Entity Names**: Use concise, unambiguous names grounded in the text, no more than 200 characters per name. Names may exceed two words when necessary for identity, within that character limit. Use grounded descriptive identifiers for unnamed entities; do not invent personal names, titles, or identity details.
 - **Entity Structure**: Each extracted entity has a `name` (the entity string) and a `presence_type` (one of the three values above).
 - **Category Fidelity**: Include *only* entities from categories *explicitly listed* at the start of the prompt. Omit all other potential entities, even if the text strongly implies they fit.
-- **Character Entities**: Use names as given in the text. Omit incidental honorifics when the remaining name identifies the character unambiguously. Prefer names or descriptive identifiers that remain meaningful without a leading honorific (e.g., "Keeper of the Dawn Archive"). Include all unique characters; avoid duplicate aliases unless explicitly noted.
-- **Location Entities**: At extraction, retain meaningful modifiers and possessives in concise names (e.g., "Eastern Courtyard" and "Western Courtyard", or "Kalia's childhood home"). Omit incidental surrounding prose. Later normalization and alias deduplication apply separately; this extraction instruction does not guarantee that every descriptive distinction survives those stages.
+- **Character Entities**: Include all distinct named and unnamed actors, including individual nonhuman actors and identifiable groups acting collectively. A brief appearance is enough. Use names as given in the text, or concise grounded roles/descriptions for unnamed actors. Omit incidental honorifics when the remaining name identifies the character unambiguously. Prefer names or descriptive identifiers that remain meaningful without a leading honorific (e.g., "Keeper of the Dawn Archive"). Do not extract a generic species or population as a character unless the text establishes a distinct actor or participating group. Do not split an undifferentiated group into invented individuals.
+- **Identity Fidelity**: Extract each identity once per category. Multiple names, titles, or descriptions of the same entity are not separate entities. Preserve distinct actors and groups when the text distinguishes them; do not invent a collective identity merely by combining individuals.
+- **Location Entities**: Include all actual grounded places and settings, including nested rooms, cellars, stables, buildings, and broader areas. Include established story-world places that are only mentioned, even in a proposed journey; omit merely hypothetical proposed places that the text does not establish as real. Do not omit small or briefly referenced settings for lack of narrative importance. At extraction, retain meaningful modifiers, possessives, and parent-place scope in concise names (e.g., "Eastern Courtyard" and "Western Courtyard", or "Kalia's childhood home"). Keep a building and its grounded internal spaces distinct; do not invent unnamed internal spaces. Omit incidental surrounding prose. Later normalization and alias deduplication apply separately; this extraction instruction does not guarantee that every descriptive distinction survives those stages.
 - **Additional Categories** (e.g., company, date, organization): Apply tailored rules *exactly* (e.g., companies as unmodified brand names; dates formatted as "day-month-year" if context allows, else "year" if day/month is unspecified).
 - **Non-character categories** (locations, objects, dates, organizations): Default `presence_type` to `literal_entity` unless the entity is invoked purely as an allusion or reference.
 - **When uncertain**: If the entity is physically in the scene → `literal_entity`. If it is a story-world entity only talked about → `mentioned_entity`. If it is invoked for rhetorical effect with no story-world presence → `allusive_figure`.
