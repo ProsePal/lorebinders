@@ -2,7 +2,7 @@
 
 import copy
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -100,7 +100,7 @@ class ConfiguredModel(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
         run_context: RunContext[object] | None = None,
-    ) -> AsyncIterator[StreamedResponse]:
+    ) -> AsyncGenerator[StreamedResponse]:
         """Forward a streaming request with this model's configured defaults."""
         async with self.wrapped.request_stream(
             messages,
@@ -328,7 +328,7 @@ async def run_agent_async(
             if limit < 1:
                 raise ValueError("max_tokens must be positive")
             merged["max_tokens"] = limit
-        return cast(ModelSettings, merged)
+        return merged
 
     safe_settings = capped_settings(
         base_settings if not callable(base_settings) else None

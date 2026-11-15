@@ -262,7 +262,7 @@ class DBStorage:
         with self._get_session() as session:
             if model := self._find_extraction(session, chapter_num, book_title):
                 return {
-                    str(k): [
+                    k: [
                         models.ExtractedEntity.model_validate(v) for v in val
                     ]
                     for k, val in model.data.items()

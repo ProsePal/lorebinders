@@ -28,7 +28,7 @@ def _format_traits(traits: dict[str, list[str] | str]) -> list[str]:
     """
     lines = []
     for trait, value in traits.items():
-        val_str = ", ".join(value) if isinstance(value, list) else str(value)
+        val_str = ", ".join(value) if isinstance(value, list) else value
         lines.append(f"  - {trait}: {val_str}")
     return lines
 

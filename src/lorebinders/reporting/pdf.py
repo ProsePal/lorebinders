@@ -49,7 +49,7 @@ def _create_occurrence_item(
     Returns:
         A Paragraph representing the trait occurrence.
     """
-    val_str = ", ".join(val) if isinstance(val, list) else str(val)
+    val_str = ", ".join(val) if isinstance(val, list) else val
     text = f"{_esc(location_key)}: {_esc(val_str)}"
     return Paragraph(text, styles["Normal"])
 
