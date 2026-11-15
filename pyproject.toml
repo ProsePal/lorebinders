@@ -9,7 +9,7 @@ authors = [
   { name = "Ashlynn Antrobus", email = "ashlynn@lorebinders.com" },
   { name = "Calvin Oliver", email = "calvino@lorebinders.com" },
   { name = "Meredith Andros", email = "mereditha@lorebinders.com" },
-  { name = "Bicholas Gem", email = "nicholasg@lorebinders.com" }
+  { name = "Nicholas Gem", email = "nicholasg@lorebinders.com" }
 ]
 keywords = ["AI", "fiction", "manuscript", "story bible", "writing"]
 classifiers = [
