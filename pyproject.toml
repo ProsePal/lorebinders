@@ -1,11 +1,16 @@
 [project]
 name = "lorebinders"
-version = "0.3.4"
+version = "0.3.6"
 description = "Create a story bible with AI from a finished manuscript"
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Ashlynn Antrobus", email = "ashlynn@prosepal.io" }]
+authors = [
+  { name = "Ashlynn Antrobus", email = "ashlynn@lorebinders.com" },
+  { name = "Calvin Oliver", email = "calvino@lorebinders.com" },
+  { name = "Meredith Andros", email = "mereditha@lorebinders.com" },
+  { name = "Nicholas Gem", email = "nicholasg@lorebinders.com" }
+]
 keywords = ["AI", "fiction", "manuscript", "story bible", "writing"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -19,6 +24,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Text Processing",
   "Typing :: Typed",
@@ -66,25 +72,6 @@ testing = [
 [build-system]
 requires = ["uv_build>=0.9.18,<0.13.0"]
 build-backend = "uv_build"
-
-[tool.uv]
-constraint-dependencies = [
-  "anyio>=4.14.2",
-  "certifi>=2026.10.19",
-  "cryptography>=50.0.0",
-  "jaraco-context>=6.1.0",
-  "lxml>=6.1.0",
-  "opentelemetry-api>=1.45.1",
-  "protobuf>=6.33.5",
-  "pyasn1>=0.6.4",
-  "pygments>=2.20.0",
-  "pyjwt>=2.15.0",
-  "python-multipart>=0.0.31",
-  "requests>=2.33.0",
-  "soupsieve>=2.9.0",
-  "urllib3>=2.8.0",
-  "virtualenv>=21.14.9",
-]
 
 [tool.coverage.run]
 omit = ["types.py", "logging.py", "reporting/styles.py"]
@@ -190,3 +177,22 @@ mypy-init-return = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv]
+constraint-dependencies = [
+  "anyio>=4.14.2",
+  "certifi>=2026.10.19",
+  "cryptography>=50.0.0",
+  "jaraco-context>=6.1.0",
+  "lxml>=6.1.0",
+  "opentelemetry-api>=1.45.1",
+  "protobuf>=6.33.5",
+  "pyasn1>=0.6.4",
+  "pygments>=2.20.0",
+  "pyjwt>=2.15.0",
+  "python-multipart>=0.0.31",
+  "requests>=2.33.0",
+  "soupsieve>=2.9.0",
+  "urllib3>=2.8.0",
+  "virtualenv>=21.14.9",
+]
