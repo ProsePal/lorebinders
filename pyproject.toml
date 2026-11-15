@@ -1,11 +1,16 @@
 [project]
 name = "lorebinders"
-version = "0.3.5"
+version = "0.3.6"
 description = "Create a story bible with AI from a finished manuscript"
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Ashlynn Antrobus", email = "ashlynn@prosepal.io" }]
+authors = [
+  { name = "Ashlynn Antrobus", email = "ashlynn@lorebinders.com" },
+  { name = "Calvin Oliver", email = "calvino@lorebinders.com" },
+  { name = "Meredith Andros", email = "mereditha@lorebinders.com" },
+  { name = "Bicholas Gem", email = "nicholasg@lorebinders.com" }
+]
 keywords = ["AI", "fiction", "manuscript", "story bible", "writing"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -19,6 +24,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Text Processing",
   "Typing :: Typed",
