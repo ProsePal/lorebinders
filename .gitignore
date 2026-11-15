@@ -16,3 +16,4 @@ work/
 *.log
 
 .vscode/
+uv.lock
