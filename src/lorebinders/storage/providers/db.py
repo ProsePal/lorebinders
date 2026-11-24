@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from sqlalchemy import JSON, String, create_engine, select
+from sqlalchemy.engine import ScalarResult
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -11,7 +12,6 @@ from sqlalchemy.orm import (
     mapped_column,
     sessionmaker,
 )
-from sqlalchemy.sql.selectable import Select
 
 import lorebinders.storage.workspace as workspace
 from lorebinders import models
@@ -153,11 +153,10 @@ class DBStorage:
 
     def _get_model(
         self,
-        session: Session,
-        stmt: Select[tuple[BaseT]],
+        scalars: ScalarResult[BaseT],
         model_class: type[BaseT],
     ) -> BaseT | None:
-        if result := session.scalars(stmt).first():
+        if result := scalars.first():
             if not isinstance(result, model_class):
                 raise TypeError(
                     f"Expected {model_class.__name__}, got {type(result)}"
@@ -183,7 +182,7 @@ class DBStorage:
             ExtractionModel.chapter_num == chapter_num,
             ExtractionModel.book_title == book_title,
         )
-        return self._get_model(session, stmt, ExtractionModel)
+        return self._get_model(session.scalars(stmt), ExtractionModel)
 
     def extraction_exists(self, chapter_num: int, book_title: str = "") -> bool:
         """Check if extraction exists.
@@ -298,7 +297,7 @@ class DBStorage:
             ProfileModel.name == name,
             ProfileModel.book_title == book_title,
         )
-        return self._get_model(session, stmt, ProfileModel)
+        return self._get_model(session.scalars(stmt), ProfileModel)
 
     def profile_exists(
         self, chapter_num: int, category: str, name: str, book_title: str = ""
@@ -456,7 +455,7 @@ class DBStorage:
             SummaryModel.category == category,
             SummaryModel.name == name,
         )
-        return self._get_model(session, stmt, SummaryModel)
+        return self._get_model(session.scalars(stmt), SummaryModel)
 
     def summary_exists(self, category: str, name: str) -> bool:
         """Check if summary exists.
@@ -541,7 +540,7 @@ class DBStorage:
                 BookModel.workspace_id == self._require_workspace_id(),
                 BookModel.title == title,
             )
-            model = self._get_model(session, stmt, BookModel)
+            model = self._get_model(session.scalars(stmt), BookModel)
             self._upsert_book(session, model, title, text)
             session.commit()
 
